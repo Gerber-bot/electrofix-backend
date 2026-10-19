@@ -1,0 +1,145 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+enum TicketStatus {
+  RECEIVED          // Recibido en mostrador
+  DIAGNOSING        // En revisión técnica
+  WAITING_APPROVAL  // Esperando OK de presupuesto del cliente
+  WAITING_PARTS     // Esperando repuesto
+  IN_REPAIR         // En banco de trabajo
+  QC_CHECK          // Control de calidad de 5 puntos
+  READY_FOR_PICKUP  // Listo para retirar y cobrar
+  DELIVERED         // Entregado y pagado
+}
+
+model Tenant {
+  id        String         @id @default(uuid())
+  name      String         // Ej: "TecnoFix Reparaciones"
+  phone     String?
+  tickets   RepairTicket[]
+  catalog   PriceCatalog[]
+  createdAt DateTime       @default(now())
+}
+
+model RepairTicket {
+  id                String       @id @default(uuid())
+  orderNumber       Int          @default(autoincrement())
+  trackingToken     String       @unique @default(cuid()) // Para el link/QR público
+  tenantId          String
+  tenant            Tenant       @relation(fields: [tenantId], references: [id])
+  
+  // Datos del Cliente
+  customerName      String
+  customerDni       String
+  customerPhone     String
+  
+  // Datos del Equipo y Legal
+  deviceType        String       // Celular, Notebook, Consola
+  brandModel        String       // Ej: "Samsung A32", "iPhone 13"
+  serialOrImei      String?
+  reportedIssue     String       // Lo que dice el cliente
+  technicalDiagnosis String?     // Lo que escribe el técnico
+  liquidDamageRisk  Boolean      @default(false) // Cláusula de humedad aceptada
+  
+  // Finanzas y Estado
+  estimatedCost     Decimal?     @db.Decimal(10, 2)
+  finalCost         Decimal?     @db.Decimal(10, 2)
+  isPaid            Boolean      @default(false)
+  status            TicketStatus @default(RECEIVED)
+  qcPassed          Boolean      @default(false)
+  
+  createdAt         DateTime     @default(now())
+  updatedAt         DateTime     @updatedAt
+
+  @@index([tenantId, status])
+  @@index([customerDni])
+}
+
+model PriceCatalog {
+  id            String   @id @default(uuid())
+  tenantId      String
+  tenant        Tenant   @relation(fields: [tenantId], references: [id])
+  brandModel    String   // Ej: "iPhone 13", "Motorola G20", "PC / Notebook"
+  serviceName   String   // Ej: "Cambio de Módulo Original", "Pin de Carga", "Formateo + Backup"
+  price         Decimal  @db.Decimal(10, 2)
+  estimatedTime String   // Ej: "2 horas", "24 a 48 hs"
+  inStock       Boolean  @default(true)
+
+  @@index([tenantId, brandModel])
+}
+
+model AuditLog {
+  id         String   @id @default(uuid())
+  user_id    String?
+  role       String?
+  action     String
+  entity     String
+  entity_id  String?
+  metadata   Json?
+  created_at DateTime @default(now())
+
+  @@map("audit_logs")
+}
+
+model Invitation {
+  id         String   @id @default(uuid())
+  email      String
+  role       String
+  token      String   @unique
+  expires_at DateTime
+  used       Boolean  @default(false)
+  created_at DateTime @default(now())
+
+  @@map("invitations")
+}
+
+model Payment {
+  id            String   @id @default(uuid())
+  ticket_id     String?
+  amount        Float
+  method        String   // CASH, TRANSFER, MERCADOPAGO, CARD
+  status        String   // APPROVED, PENDING, REJECTED
+  reference     String?
+  notes         String?
+  created_at    DateTime @default(now())
+
+  @@map("payments")
+}
+
+model Invoice {
+  id            String   @id @default(uuid())
+  ticket_id     String?
+  customer_name String
+  customer_tax_id String? // DNI or CUIT
+  total_amount  Float
+  status        String   // ISSUED, CANCELLED
+  invoice_number String  @unique
+  pdf_url       String?
+  created_at    DateTime @default(now())
+
+  @@map("invoices")
+}
+
+model CatalogItem {
+  id              String   @id @default(uuid())
+  nombre          String
+  modelo          String?
+  categoria       String
+  precio          Float
+  tiempo_estimado String
+  stock           Int      @default(0)
+  descripcion     String
+  palabras_clave  String[]
+  activo          Boolean  @default(true)
+  creado_en       DateTime @default(now())
+  actualizado_en  DateTime @updatedAt
+
+  @@map("catalog_items")
+}
