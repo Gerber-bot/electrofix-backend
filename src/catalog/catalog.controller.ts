@@ -28,7 +28,7 @@ export class CatalogController {
     return this.catalogService.search(q || '');
   }
 
-  @Get()
+  @Get(['', 'items'])
   async findAll(
     @Query('active') active?: string,
     @Query('category') category?: string,
@@ -37,12 +37,12 @@ export class CatalogController {
     return this.catalogService.findAll({ active: activeBool, category });
   }
 
-  @Get(':id')
+  @Get([':id', 'items/:id'])
   async findById(@Param('id') id: string) {
     return this.catalogService.findById(id);
   }
 
-  @Post()
+  @Post(['', 'items'])
   @UseGuards(RolesGuard)
   @Roles('admin', 'taller')
   async create(@Body() dto: CreateCatalogItemDto, @Req() req: Request) {
@@ -53,7 +53,7 @@ export class CatalogController {
     return this.catalogService.create(dto, user ? { id: user.id, role: user.role } : undefined);
   }
 
-  @Patch(':id')
+  @Patch([':id', 'items/:id'])
   @UseGuards(RolesGuard)
   @Roles('admin', 'taller')
   async update(
@@ -65,7 +65,7 @@ export class CatalogController {
     return this.catalogService.update(id, dto, user ? { id: user.id, role: user.role } : undefined);
   }
 
-  @Delete(':id')
+  @Delete([':id', 'items/:id'])
   @UseGuards(RolesGuard)
   @Roles('admin', 'taller')
   async delete(@Param('id') id: string, @Req() req: Request) {

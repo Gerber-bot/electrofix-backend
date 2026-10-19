@@ -10,10 +10,12 @@ try {
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
 
-  // Enable CORS for frontend requests
+  // Enable CORS for frontend requests (origin: true allows credentials: true with cookies and Authorization header)
   app.enableCors({
-    origin: '*',
+    origin: true,
     methods: 'GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS',
+    allowedHeaders: 'Content-Type,Authorization,Accept,Range,X-Requested-With',
+    exposedHeaders: 'Content-Range,Content-Disposition,Content-Length',
     credentials: true,
   });
 

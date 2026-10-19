@@ -3,7 +3,7 @@ import { DashboardService } from './dashboard.service';
 import { Roles } from '../../auth/roles.decorator';
 import { RolesGuard } from '../../auth/roles.guard';
 
-@Controller('admin-suite/dashboard')
+@Controller(['admin-suite/dashboard', 'dashboard'])
 @UseGuards(RolesGuard)
 export class DashboardController {
   constructor(private readonly dashboardService: DashboardService) {}

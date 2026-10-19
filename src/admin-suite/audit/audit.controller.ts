@@ -10,7 +10,7 @@ import { AuditService } from './audit.service';
 import { Roles } from '../../auth/roles.decorator';
 import { RolesGuard } from '../../auth/roles.guard';
 
-@Controller('admin-suite/audit')
+@Controller(['admin-suite/audit', 'audit'])
 @UseGuards(RolesGuard)
 export class AuditController {
   constructor(private readonly auditService: AuditService) {}

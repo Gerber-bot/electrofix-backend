@@ -211,6 +211,23 @@ export class BillingService {
     }
   }
 
+  async getInvoiceById(id: string) {
+    try {
+      const inv = await this.prisma.invoice.findFirst({
+        where: {
+          OR: [{ id }, { invoice_number: id }],
+        },
+      });
+      if (!inv) {
+        throw new NotFoundException(`Factura con ID o número ${id} no encontrada`);
+      }
+      return inv;
+    } catch (err) {
+      if (err instanceof NotFoundException) throw err;
+      throw new NotFoundException(`Factura con ID o número ${id} no encontrada`);
+    }
+  }
+
   async getDailyCashClosing(): Promise<CashClosingSummary> {
     const today = new Date();
     today.setHours(0, 0, 0, 0);

@@ -10,7 +10,7 @@ export class ReportsController {
     private readonly auditService: AuditService,
   ) {}
 
-  @Get('ticket/:id/pdf')
+  @Get(['ticket/:id/pdf', 'ticket/:id'])
   async getTicketPdf(@Param('id') id: string, @Res() res: Response) {
     const pdfBuffer = await this.reportsService.generateTicketPdf(id);
 
@@ -29,7 +29,7 @@ export class ReportsController {
     return res.status(HttpStatus.OK).send(pdfBuffer);
   }
 
-  @Get('diagnostic/:id/pdf')
+  @Get(['diagnostic/:id/pdf', 'diagnostic/:id'])
   async getDiagnosticPdf(@Param('id') id: string, @Res() res: Response) {
     const pdfBuffer = await this.reportsService.generateDiagnosticPdf(id);
 
@@ -48,7 +48,7 @@ export class ReportsController {
     return res.status(HttpStatus.OK).send(pdfBuffer);
   }
 
-  @Get('payment/:id/pdf')
+  @Get(['payment/:id/pdf', 'payment/:id'])
   async getPaymentPdf(@Param('id') id: string, @Res() res: Response) {
     const pdfBuffer = await this.reportsService.generatePaymentReceiptPdf(id);
 

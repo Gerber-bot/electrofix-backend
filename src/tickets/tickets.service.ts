@@ -158,4 +158,25 @@ export class TicketsService {
       },
     });
   }
+
+  async approveBudget(identifier: string) {
+    const clean = identifier.trim();
+    const ticket = await this.prisma.repairTicket.findFirst({
+      where: {
+        OR: [{ id: clean }, { trackingToken: clean }],
+      },
+    });
+
+    if (!ticket) {
+      throw new NotFoundException(`Ticket "${clean}" no encontrado`);
+    }
+
+    return this.prisma.repairTicket.update({
+      where: { id: ticket.id },
+      data: { status: TicketStatus.IN_REPAIR },
+      include: {
+        tenant: true,
+      },
+    });
+  }
 }

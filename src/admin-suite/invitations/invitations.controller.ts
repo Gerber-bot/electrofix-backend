@@ -14,7 +14,7 @@ import { RolesGuard } from '../../auth/roles.guard';
 import type { Request } from 'express';
 import { AuthenticatedUser } from '../../auth/auth.middleware';
 
-@Controller('admin-suite/invitations')
+@Controller(['admin-suite/invitations', 'invitations'])
 @UseGuards(RolesGuard)
 export class InvitationsController {
   constructor(private readonly invitationsService: InvitationsService) {}

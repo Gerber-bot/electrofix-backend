@@ -24,6 +24,11 @@ export class BillingController {
     return this.billingService.registerPayment(dto);
   }
 
+  @Get('payments/:id')
+  async getPaymentById(@Param('id') id: string) {
+    return this.billingService.getPaymentById(id);
+  }
+
   @Get('invoices')
   async getInvoices() {
     return this.billingService.getInvoices();
@@ -32,6 +37,11 @@ export class BillingController {
   @Post('invoices')
   async createInvoice(@Body() dto: CreateInvoiceDto) {
     return this.billingService.createInvoice(dto);
+  }
+
+  @Get('invoices/:id')
+  async getInvoiceById(@Param('id') id: string) {
+    return this.billingService.getInvoiceById(id);
   }
 
   @Get('summary')

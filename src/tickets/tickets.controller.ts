@@ -34,14 +34,19 @@ export class TicketsController {
     return this.ticketsService.getTicketsByDni(dni);
   }
 
+  @Get()
+  async getAll(@Query('status') status?: TicketStatus) {
+    return this.ticketsService.getTickets(status);
+  }
+
   @Get(':id')
   async getById(@Param('id') id: string) {
     return this.ticketsService.getTicketById(id);
   }
 
-  @Get()
-  async getAll(@Query('status') status?: TicketStatus) {
-    return this.ticketsService.getTickets(status);
+  @Patch([':id/approve', 'track/:token/approve', 'approve/:id'])
+  async approveBudget(@Param('id') id?: string, @Param('token') token?: string) {
+    return this.ticketsService.approveBudget(id || token || '');
   }
 
   @Post()

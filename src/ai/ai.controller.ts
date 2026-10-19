@@ -29,7 +29,7 @@ export class AiController {
     return this.aiService.formatTechNoteForCustomer(raw, device);
   }
 
-  @Post('chat')
+  @Post(['chat', 'quote'])
   async chat(@Body() body: ChatDto) {
     return this.aiService.handleCustomerMessage(body?.tenantId, body?.message || '', body?.customerDni);
   }
