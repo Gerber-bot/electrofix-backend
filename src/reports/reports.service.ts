@@ -327,43 +327,14 @@ export class ReportsService {
     let ticket: any = null;
 
     try {
-      const pDelegate = (this.prisma as any).payment;
-      if (pDelegate?.findUnique) {
-        payment = await pDelegate.findUnique({ where: { id: paymentOrInvoiceId } });
-      }
+      payment = await this.prisma.payment.findUnique({ where: { id: paymentOrInvoiceId } });
     } catch {
       // Ignore
     }
 
     if (!payment) {
       try {
-        const rows: any[] = await this.prisma.$queryRawUnsafe(
-          `SELECT * FROM "payments" WHERE "id" = $1 LIMIT 1`,
-          paymentOrInvoiceId,
-        );
-        if (rows && rows.length > 0) payment = rows[0];
-      } catch {
-        // Ignore
-      }
-    }
-
-    // Also check if it's an invoice
-    try {
-      const invDelegate = (this.prisma as any).invoice;
-      if (invDelegate?.findUnique) {
-        invoice = await invDelegate.findUnique({ where: { id: paymentOrInvoiceId } });
-      }
-    } catch {
-      // Ignore
-    }
-
-    if (!invoice) {
-      try {
-        const rows: any[] = await this.prisma.$queryRawUnsafe(
-          `SELECT * FROM "invoices" WHERE "id" = $1 LIMIT 1`,
-          paymentOrInvoiceId,
-        );
-        if (rows && rows.length > 0) invoice = rows[0];
+        invoice = await this.prisma.invoice.findUnique({ where: { id: paymentOrInvoiceId } });
       } catch {
         // Ignore
       }

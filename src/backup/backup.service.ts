@@ -357,13 +357,7 @@ export class BackupService {
       return logs;
     } catch (err) {
       this.logger.warn(`Could not fetch backup history from Prisma: ${(err as Error).message}`);
-      try {
-        return await this.prisma.$queryRawUnsafe<any[]>(
-          `SELECT * FROM "audit_logs" WHERE entity = 'backup' OR action = 'BACKUP_EXPORT' ORDER BY created_at DESC LIMIT 100;`,
-        );
-      } catch {
-        return [];
-      }
+      return [];
     }
   }
 }

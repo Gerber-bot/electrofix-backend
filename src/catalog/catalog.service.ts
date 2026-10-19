@@ -30,35 +30,7 @@ export class CatalogService implements OnModuleInit {
   ) {}
 
   async onModuleInit() {
-    await this.ensureTableExists();
     await this.seedInitialItemsIfEmpty();
-  }
-
-  private async ensureTableExists() {
-    try {
-      await this.prisma.$executeRawUnsafe(`
-        CREATE TABLE IF NOT EXISTS "catalog_items" (
-          "id" TEXT PRIMARY KEY,
-          "nombre" TEXT NOT NULL,
-          "modelo" TEXT,
-          "categoria" TEXT NOT NULL,
-          "precio" DOUBLE PRECISION NOT NULL,
-          "tiempo_estimado" TEXT NOT NULL,
-          "stock" INTEGER NOT NULL DEFAULT 0,
-          "descripcion" TEXT NOT NULL,
-          "palabras_clave" TEXT[] NOT NULL DEFAULT '{}',
-          "activo" BOOLEAN NOT NULL DEFAULT TRUE,
-          "creado_en" TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-          "actualizado_en" TIMESTAMP WITH TIME ZONE DEFAULT NOW()
-        );
-      `);
-      await this.prisma.$executeRawUnsafe(`
-        CREATE INDEX IF NOT EXISTS "catalog_items_categoria_idx" ON "catalog_items"("categoria");
-        CREATE INDEX IF NOT EXISTS "catalog_items_activo_idx" ON "catalog_items"("activo");
-      `);
-    } catch (err: unknown) {
-      this.logger.warn(`Could not ensure catalog_items table via SQL: ${(err as Error).message}`);
-    }
   }
 
   private async seedInitialItemsIfEmpty() {
@@ -158,17 +130,7 @@ export class CatalogService implements OnModuleInit {
 
   async count(): Promise<number> {
     try {
-      const delegate = (this.prisma as any).catalogItem;
-      if (delegate?.count) {
-        return await delegate.count();
-      }
-    } catch {
-      // Fallback
-    }
-
-    try {
-      const res: any = await this.prisma.$queryRawUnsafe(`SELECT COUNT(*)::int AS count FROM "catalog_items"`);
-      return Number(res[0]?.count || 0);
+      return await this.prisma.catalogItem.count();
     } catch {
       return 0;
     }
@@ -176,47 +138,17 @@ export class CatalogService implements OnModuleInit {
 
   async findAll(filter?: { active?: boolean; category?: string }): Promise<CatalogItemEntity[]> {
     try {
-      const delegate = (this.prisma as any).catalogItem;
-      if (delegate?.findMany) {
-        const where: any = {};
-        if (filter?.active !== undefined) {
-          where.activo = filter.active;
-        }
-        if (filter?.category) {
-          where.categoria = { equals: filter.category, mode: 'insensitive' };
-        }
-        return await delegate.findMany({
-          where,
-          orderBy: [{ categoria: 'asc' }, { nombre: 'asc' }],
-        });
-      }
-    } catch {
-      // Fallback to raw SQL below
-    }
-
-    try {
-      const conditions: string[] = ['1=1'];
-      const params: any[] = [];
-      let pIdx = 1;
-
+      const where: any = {};
       if (filter?.active !== undefined) {
-        conditions.push(`"activo" = $${pIdx++}`);
-        params.push(filter.active);
+        where.activo = filter.active;
       }
       if (filter?.category) {
-        conditions.push(`LOWER("categoria") = LOWER($${pIdx++})`);
-        params.push(filter.category);
+        where.categoria = { equals: filter.category, mode: 'insensitive' };
       }
-
-      const whereClause = conditions.join(' AND ');
-      const rows: any = await this.prisma.$queryRawUnsafe(
-        `SELECT "id", "nombre", "modelo", "categoria", "precio", "tiempo_estimado", "stock", "descripcion", "palabras_clave", "activo", "creado_en", "actualizado_en"
-         FROM "catalog_items"
-         WHERE ${whereClause}
-         ORDER BY "categoria" ASC, "nombre" ASC`,
-        ...params,
-      );
-      return rows || [];
+      return await this.prisma.catalogItem.findMany({
+        where,
+        orderBy: [{ categoria: 'asc' }, { nombre: 'asc' }],
+      });
     } catch (err) {
       this.logger.error(`Error querying catalog items: ${(err as Error).message}`);
       return [];
@@ -225,26 +157,10 @@ export class CatalogService implements OnModuleInit {
 
   async findById(id: string): Promise<CatalogItemEntity> {
     try {
-      const delegate = (this.prisma as any).catalogItem;
-      if (delegate?.findUnique) {
-        const item = await delegate.findUnique({ where: { id } });
-        if (item) return item;
-      }
+      const item = await this.prisma.catalogItem.findUnique({ where: { id } });
+      if (item) return item;
     } catch {
-      // Fallback
-    }
-
-    try {
-      const rows: any = await this.prisma.$queryRawUnsafe(
-        `SELECT "id", "nombre", "modelo", "categoria", "precio", "tiempo_estimado", "stock", "descripcion", "palabras_clave", "activo", "creado_en", "actualizado_en"
-         FROM "catalog_items" WHERE "id" = $1 LIMIT 1`,
-        id,
-      );
-      if (rows && rows.length > 0) {
-        return rows[0];
-      }
-    } catch {
-      // Fallback
+      // Fall through to NotFoundException
     }
 
     throw new NotFoundException(`Servicio de catálogo con ID "${id}" no encontrado`);
@@ -260,51 +176,8 @@ export class CatalogService implements OnModuleInit {
       ? dto.palabras_clave.map((p) => String(p).trim()).filter(Boolean)
       : [];
 
-    let item: CatalogItemEntity | null = null;
-
-    try {
-      const delegate = (this.prisma as any).catalogItem;
-      if (delegate?.create) {
-        item = await delegate.create({
-          data: {
-            id,
-            nombre: dto.nombre,
-            modelo: dto.modelo || null,
-            categoria: dto.categoria,
-            precio: Number(dto.precio),
-            tiempo_estimado: dto.tiempo_estimado,
-            stock: Number(dto.stock ?? 0),
-            descripcion: dto.descripcion,
-            palabras_clave: palabrasClave,
-            activo: dto.activo !== undefined ? Boolean(dto.activo) : true,
-            creado_en: now,
-            actualizado_en: now,
-          },
-        });
-      }
-    } catch {
-      // Fallback
-    }
-
-    if (!item) {
-      await this.prisma.$executeRawUnsafe(
-        `INSERT INTO "catalog_items" ("id", "nombre", "modelo", "categoria", "precio", "tiempo_estimado", "stock", "descripcion", "palabras_clave", "activo", "creado_en", "actualizado_en")
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)`,
-        id,
-        dto.nombre,
-        dto.modelo || null,
-        dto.categoria,
-        Number(dto.precio),
-        dto.tiempo_estimado,
-        Number(dto.stock ?? 0),
-        dto.descripcion,
-        palabrasClave,
-        dto.activo !== undefined ? Boolean(dto.activo) : true,
-        now,
-        now,
-      );
-
-      item = {
+    const item = await this.prisma.catalogItem.create({
+      data: {
         id,
         nombre: dto.nombre,
         modelo: dto.modelo || null,
@@ -317,8 +190,8 @@ export class CatalogService implements OnModuleInit {
         activo: dto.activo !== undefined ? Boolean(dto.activo) : true,
         creado_en: now,
         actualizado_en: now,
-      };
-    }
+      },
+    });
 
     // Audit log
     await this.auditService.logAction({
@@ -364,70 +237,10 @@ export class CatalogService implements OnModuleInit {
     }
     if (dto.activo !== undefined) dataToUpdate.activo = Boolean(dto.activo);
 
-    let updated: CatalogItemEntity | null = null;
-
-    try {
-      const delegate = (this.prisma as any).catalogItem;
-      if (delegate?.update) {
-        updated = await delegate.update({
-          where: { id },
-          data: dataToUpdate,
-        });
-      }
-    } catch {
-      // Fallback
-    }
-
-    if (!updated) {
-      const sets: string[] = ['"actualizado_en" = $1'];
-      const params: any[] = [now];
-      let pIdx = 2;
-
-      if (dto.nombre !== undefined) {
-        sets.push(`"nombre" = $${pIdx++}`);
-        params.push(dto.nombre);
-      }
-      if (dto.modelo !== undefined) {
-        sets.push(`"modelo" = $${pIdx++}`);
-        params.push(dto.modelo || null);
-      }
-      if (dto.categoria !== undefined) {
-        sets.push(`"categoria" = $${pIdx++}`);
-        params.push(dto.categoria);
-      }
-      if (dto.precio !== undefined) {
-        sets.push(`"precio" = $${pIdx++}`);
-        params.push(Number(dto.precio));
-      }
-      if (dto.tiempo_estimado !== undefined) {
-        sets.push(`"tiempo_estimado" = $${pIdx++}`);
-        params.push(dto.tiempo_estimado);
-      }
-      if (dto.stock !== undefined) {
-        sets.push(`"stock" = $${pIdx++}`);
-        params.push(Number(dto.stock));
-      }
-      if (dto.descripcion !== undefined) {
-        sets.push(`"descripcion" = $${pIdx++}`);
-        params.push(dto.descripcion);
-      }
-      if (dto.palabras_clave !== undefined) {
-        sets.push(`"palabras_clave" = $${pIdx++}`);
-        params.push(dataToUpdate.palabras_clave);
-      }
-      if (dto.activo !== undefined) {
-        sets.push(`"activo" = $${pIdx++}`);
-        params.push(Boolean(dto.activo));
-      }
-
-      params.push(id);
-      await this.prisma.$executeRawUnsafe(
-        `UPDATE "catalog_items" SET ${sets.join(', ')} WHERE "id" = $${pIdx}`,
-        ...params,
-      );
-
-      updated = await this.findById(id);
-    }
+    const updated = await this.prisma.catalogItem.update({
+      where: { id },
+      data: dataToUpdate,
+    });
 
     // Audit log
     await this.auditService.logAction({
@@ -447,22 +260,13 @@ export class CatalogService implements OnModuleInit {
       },
     });
 
-    return updated!;
+    return updated;
   }
 
   async delete(id: string, user?: { id?: string; role?: string }): Promise<{ ok: boolean; id: string }> {
     const existing = await this.findById(id);
 
-    try {
-      const delegate = (this.prisma as any).catalogItem;
-      if (delegate?.delete) {
-        await delegate.delete({ where: { id } });
-      } else {
-        await this.prisma.$executeRawUnsafe(`DELETE FROM "catalog_items" WHERE "id" = $1`, id);
-      }
-    } catch {
-      await this.prisma.$executeRawUnsafe(`DELETE FROM "catalog_items" WHERE "id" = $1`, id);
-    }
+    await this.prisma.catalogItem.delete({ where: { id } });
 
     // Audit log
     await this.auditService.logAction({

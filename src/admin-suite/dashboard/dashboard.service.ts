@@ -126,9 +126,11 @@ export class DashboardService {
       for (let i = 0; i < 24; i++) hourCounts[i] = 0;
 
       try {
-        const auditRows: any[] = await this.prisma.$queryRawUnsafe(
-          `SELECT "role", "created_at" FROM "audit_logs" ORDER BY "created_at" DESC LIMIT 1000`,
-        );
+        const auditRows = await this.prisma.auditLog.findMany({
+          select: { role: true, created_at: true },
+          orderBy: { created_at: 'desc' },
+          take: 1000,
+        });
 
         if (auditRows && auditRows.length > 0) {
           for (const row of auditRows) {

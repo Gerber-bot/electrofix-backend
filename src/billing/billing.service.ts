@@ -1,4 +1,4 @@
-import { Injectable, Logger, OnModuleInit, NotFoundException, BadRequestException } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../admin-suite/audit/audit.service';
 import { randomUUID } from 'crypto';
@@ -41,62 +41,13 @@ export class MercadoPagoPreferenceDto {
 }
 
 @Injectable()
-export class BillingService implements OnModuleInit {
+export class BillingService {
   private readonly logger = new Logger(BillingService.name);
 
   constructor(
     private readonly prisma: PrismaService,
     private readonly auditService: AuditService,
   ) {}
-
-  async onModuleInit() {
-    await this.ensureTableExists();
-  }
-
-  private async ensureTableExists() {
-    try {
-      await this.prisma.$executeRawUnsafe(`
-        CREATE TABLE IF NOT EXISTS "payments" (
-          "id" TEXT PRIMARY KEY,
-          "ticket_id" TEXT,
-          "amount" DOUBLE PRECISION NOT NULL,
-          "method" TEXT NOT NULL,
-          "status" TEXT NOT NULL,
-          "reference" TEXT,
-          "notes" TEXT,
-          "created_at" TIMESTAMP WITH TIME ZONE DEFAULT NOW()
-        );
-      `);
-      await this.prisma.$executeRawUnsafe(`
-        CREATE INDEX IF NOT EXISTS "payments_ticket_id_idx" ON "payments"("ticket_id");
-        CREATE INDEX IF NOT EXISTS "payments_created_at_idx" ON "payments"("created_at");
-      `);
-    } catch (err: unknown) {
-      this.logger.warn(`Could not ensure payments table via SQL: ${(err as Error).message}`);
-    }
-
-    try {
-      await this.prisma.$executeRawUnsafe(`
-        CREATE TABLE IF NOT EXISTS "invoices" (
-          "id" TEXT PRIMARY KEY,
-          "ticket_id" TEXT,
-          "customer_name" TEXT NOT NULL,
-          "customer_tax_id" TEXT,
-          "total_amount" DOUBLE PRECISION NOT NULL,
-          "status" TEXT NOT NULL,
-          "invoice_number" TEXT UNIQUE NOT NULL,
-          "pdf_url" TEXT,
-          "created_at" TIMESTAMP WITH TIME ZONE DEFAULT NOW()
-        );
-      `);
-      await this.prisma.$executeRawUnsafe(`
-        CREATE INDEX IF NOT EXISTS "invoices_ticket_id_idx" ON "invoices"("ticket_id");
-        CREATE INDEX IF NOT EXISTS "invoices_number_idx" ON "invoices"("invoice_number");
-      `);
-    } catch (err: unknown) {
-      this.logger.warn(`Could not ensure invoices table via SQL: ${(err as Error).message}`);
-    }
-  }
 
   async registerPayment(dto: RegisterPaymentDto) {
     if (!dto.amount || dto.amount <= 0) {
@@ -113,40 +64,8 @@ export class BillingService implements OnModuleInit {
     let paymentRecord: any;
 
     try {
-      const delegate = (this.prisma as any).payment;
-      if (delegate?.create) {
-        paymentRecord = await delegate.create({
-          data: {
-            id,
-            ticket_id: dto.ticketId ?? null,
-            amount: Number(dto.amount),
-            method: dto.method.toUpperCase(),
-            status,
-            reference: dto.reference ?? null,
-            notes: dto.notes ?? null,
-            created_at: now,
-          },
-        });
-      }
-    } catch {
-      // Fallback to raw SQL below
-    }
-
-    if (!paymentRecord) {
-      try {
-        await this.prisma.$executeRawUnsafe(
-          `INSERT INTO "payments" ("id", "ticket_id", "amount", "method", "status", "reference", "notes", "created_at")
-           VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
-          id,
-          dto.ticketId ?? null,
-          Number(dto.amount),
-          dto.method.toUpperCase(),
-          status,
-          dto.reference ?? null,
-          dto.notes ?? null,
-          now,
-        );
-        paymentRecord = {
+      paymentRecord = await this.prisma.payment.create({
+        data: {
           id,
           ticket_id: dto.ticketId ?? null,
           amount: Number(dto.amount),
@@ -155,11 +74,11 @@ export class BillingService implements OnModuleInit {
           reference: dto.reference ?? null,
           notes: dto.notes ?? null,
           created_at: now,
-        };
-      } catch (sqlErr) {
-        this.logger.error(`Failed to insert payment: ${(sqlErr as Error).message}`);
-        throw new BadRequestException('No se pudo registrar el pago');
-      }
+        },
+      });
+    } catch (err) {
+      this.logger.error(`Failed to insert payment: ${(err as Error).message}`);
+      throw new BadRequestException('No se pudo registrar el pago');
     }
 
     // Update ticket isPaid if approved and ticketId provided
@@ -193,62 +112,32 @@ export class BillingService implements OnModuleInit {
 
   async getPayments(filters?: { ticketId?: string; status?: string; method?: string }) {
     try {
-      const delegate = (this.prisma as any).payment;
-      if (delegate?.findMany) {
-        const where: any = {};
-        if (filters?.ticketId) where.ticket_id = filters.ticketId;
-        if (filters?.status) where.status = filters.status.toUpperCase();
-        if (filters?.method) where.method = filters.method.toUpperCase();
+      const where: any = {};
+      if (filters?.ticketId) where.ticket_id = filters.ticketId;
+      if (filters?.status) where.status = filters.status.toUpperCase();
+      if (filters?.method) where.method = filters.method.toUpperCase();
 
-        return await delegate.findMany({
-          where,
-          orderBy: { created_at: 'desc' },
-        });
-      }
-    } catch {
-      // Fallback
+      return await this.prisma.payment.findMany({
+        where,
+        orderBy: { created_at: 'desc' },
+      });
+    } catch (err) {
+      this.logger.error(`Error querying payments: ${(err as Error).message}`);
+      return [];
     }
-
-    let query = `SELECT * FROM "payments" WHERE 1=1`;
-    const params: any[] = [];
-    let pIdx = 1;
-
-    if (filters?.ticketId) {
-      query += ` AND "ticket_id" = $${pIdx++}`;
-      params.push(filters.ticketId);
-    }
-    if (filters?.status) {
-      query += ` AND "status" = $${pIdx++}`;
-      params.push(filters.status.toUpperCase());
-    }
-    if (filters?.method) {
-      query += ` AND "method" = $${pIdx++}`;
-      params.push(filters.method.toUpperCase());
-    }
-    query += ` ORDER BY "created_at" DESC`;
-
-    return await this.prisma.$queryRawUnsafe(query, ...params);
   }
 
   async getPaymentById(id: string) {
     try {
-      const delegate = (this.prisma as any).payment;
-      if (delegate?.findUnique) {
-        const p = await delegate.findUnique({ where: { id } });
-        if (p) return p;
+      const p = await this.prisma.payment.findUnique({ where: { id } });
+      if (!p) {
+        throw new NotFoundException(`Pago con ID ${id} no encontrado`);
       }
-    } catch {
-      // Fallback
-    }
-
-    const rows: any[] = await this.prisma.$queryRawUnsafe(
-      `SELECT * FROM "payments" WHERE "id" = $1 LIMIT 1`,
-      id,
-    );
-    if (!rows || rows.length === 0) {
+      return p;
+    } catch (err) {
+      if (err instanceof NotFoundException) throw err;
       throw new NotFoundException(`Pago con ID ${id} no encontrado`);
     }
-    return rows[0];
   }
 
   async createInvoice(dto: CreateInvoiceDto) {
@@ -278,42 +167,8 @@ export class BillingService implements OnModuleInit {
     let invoiceRecord: any;
 
     try {
-      const delegate = (this.prisma as any).invoice;
-      if (delegate?.create) {
-        invoiceRecord = await delegate.create({
-          data: {
-            id,
-            ticket_id: dto.ticketId ?? null,
-            customer_name: dto.customerName,
-            customer_tax_id: dto.customerTaxId ?? null,
-            total_amount: Number(dto.totalAmount),
-            status: 'ISSUED',
-            invoice_number: invoiceNumber,
-            pdf_url: pdfUrl,
-            created_at: now,
-          },
-        });
-      }
-    } catch {
-      // Fallback
-    }
-
-    if (!invoiceRecord) {
-      try {
-        await this.prisma.$executeRawUnsafe(
-          `INSERT INTO "invoices" ("id", "ticket_id", "customer_name", "customer_tax_id", "total_amount", "status", "invoice_number", "pdf_url", "created_at")
-           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
-          id,
-          dto.ticketId ?? null,
-          dto.customerName,
-          dto.customerTaxId ?? null,
-          Number(dto.totalAmount),
-          'ISSUED',
-          invoiceNumber,
-          pdfUrl,
-          now,
-        );
-        invoiceRecord = {
+      invoiceRecord = await this.prisma.invoice.create({
+        data: {
           id,
           ticket_id: dto.ticketId ?? null,
           customer_name: dto.customerName,
@@ -323,11 +178,11 @@ export class BillingService implements OnModuleInit {
           invoice_number: invoiceNumber,
           pdf_url: pdfUrl,
           created_at: now,
-        };
-      } catch (sqlErr) {
-        this.logger.error(`Failed to insert invoice: ${(sqlErr as Error).message}`);
-        throw new BadRequestException('No se pudo generar la factura');
-      }
+        },
+      });
+    } catch (err) {
+      this.logger.error(`Failed to insert invoice: ${(err as Error).message}`);
+      throw new BadRequestException('No se pudo generar la factura');
     }
 
     await this.auditService.logAction({
@@ -347,19 +202,13 @@ export class BillingService implements OnModuleInit {
 
   async getInvoices() {
     try {
-      const delegate = (this.prisma as any).invoice;
-      if (delegate?.findMany) {
-        return await delegate.findMany({
-          orderBy: { created_at: 'desc' },
-        });
-      }
-    } catch {
-      // Fallback
+      return await this.prisma.invoice.findMany({
+        orderBy: { created_at: 'desc' },
+      });
+    } catch (err) {
+      this.logger.error(`Error querying invoices: ${(err as Error).message}`);
+      return [];
     }
-
-    return await this.prisma.$queryRawUnsafe(
-      `SELECT * FROM "invoices" ORDER BY "created_at" DESC`,
-    );
   }
 
   async getDailyCashClosing(): Promise<CashClosingSummary> {

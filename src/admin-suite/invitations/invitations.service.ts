@@ -2,7 +2,6 @@ import {
   Injectable,
   BadRequestException,
   NotFoundException,
-  OnModuleInit,
   Logger,
 } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
@@ -23,7 +22,7 @@ export interface InvitationItem {
 }
 
 @Injectable()
-export class InvitationsService implements OnModuleInit {
+export class InvitationsService {
   private readonly logger = new Logger(InvitationsService.name);
 
   constructor(
@@ -31,32 +30,6 @@ export class InvitationsService implements OnModuleInit {
     private readonly authService: AuthService,
     private readonly auditService: AuditService,
   ) {}
-
-  async onModuleInit() {
-    await this.ensureTableExists();
-  }
-
-  private async ensureTableExists() {
-    try {
-      await this.prisma.$executeRawUnsafe(`
-        CREATE TABLE IF NOT EXISTS "invitations" (
-          "id" TEXT PRIMARY KEY,
-          "email" TEXT NOT NULL,
-          "role" TEXT NOT NULL,
-          "token" TEXT UNIQUE NOT NULL,
-          "expires_at" TIMESTAMP WITH TIME ZONE NOT NULL,
-          "used" BOOLEAN DEFAULT FALSE,
-          "created_at" TIMESTAMP WITH TIME ZONE DEFAULT NOW()
-        );
-      `);
-      await this.prisma.$executeRawUnsafe(`
-        CREATE INDEX IF NOT EXISTS "invitations_token_idx" ON "invitations"("token");
-        CREATE INDEX IF NOT EXISTS "invitations_email_idx" ON "invitations"("email");
-      `);
-    } catch (err: unknown) {
-      this.logger.warn(`Could not ensure invitations table via SQL: ${(err as Error).message}`);
-    }
-  }
 
   async createInvitation(
     email: string,
@@ -75,41 +48,9 @@ export class InvitationsService implements OnModuleInit {
     const expiresAt = new Date(Date.now() + 48 * 60 * 60 * 1000); // 48 hours
     const now = new Date();
 
-    let createdRecord: InvitationItem | null = null;
-
     try {
-      const prismaDelegate = (this.prisma as any).invitation;
-      if (prismaDelegate?.create) {
-        createdRecord = await prismaDelegate.create({
-          data: {
-            id,
-            email: normalizedEmail,
-            role,
-            token,
-            expires_at: expiresAt,
-            used: false,
-            created_at: now,
-          },
-        });
-      }
-    } catch {
-      // Fallback to SQL below
-    }
-
-    if (!createdRecord) {
-      try {
-        await this.prisma.$executeRawUnsafe(
-          `INSERT INTO "invitations" ("id", "email", "role", "token", "expires_at", "used", "created_at")
-           VALUES ($1, $2, $3, $4, $5, $6, $7)`,
-          id,
-          normalizedEmail,
-          role,
-          token,
-          expiresAt,
-          false,
-          now,
-        );
-        createdRecord = {
+      await this.prisma.invitation.create({
+        data: {
           id,
           email: normalizedEmail,
           role,
@@ -117,11 +58,11 @@ export class InvitationsService implements OnModuleInit {
           expires_at: expiresAt,
           used: false,
           created_at: now,
-        };
-      } catch (sqlErr) {
-        this.logger.error(`Error inserting invitation: ${(sqlErr as Error).message}`);
-        throw new BadRequestException('No se pudo generar la invitación.');
-      }
+        },
+      });
+    } catch (err) {
+      this.logger.error(`Error inserting invitation: ${(err as Error).message}`);
+      throw new BadRequestException('No se pudo generar la invitación.');
     }
 
     // Log to AuditLog
@@ -159,27 +100,9 @@ export class InvitationsService implements OnModuleInit {
     let invitation: InvitationItem | null = null;
 
     try {
-      const prismaDelegate = (this.prisma as any).invitation;
-      if (prismaDelegate?.findUnique) {
-        invitation = await prismaDelegate.findUnique({ where: { token } });
-      }
-    } catch {
-      // Fallback
-    }
-
-    if (!invitation) {
-      try {
-        const rows: any = await this.prisma.$queryRawUnsafe(
-          `SELECT "id", "email", "role", "token", "expires_at", "used", "created_at"
-           FROM "invitations" WHERE "token" = $1 LIMIT 1`,
-          token,
-        );
-        if (rows && rows.length > 0) {
-          invitation = rows[0];
-        }
-      } catch (err) {
-        this.logger.error(`Error querying invitation by token: ${(err as Error).message}`);
-      }
+      invitation = await this.prisma.invitation.findUnique({ where: { token } });
+    } catch (err) {
+      this.logger.error(`Error querying invitation by token: ${(err as Error).message}`);
     }
 
     if (!invitation) {
@@ -224,27 +147,12 @@ export class InvitationsService implements OnModuleInit {
 
     // 2. Mark invitation as used
     try {
-      const prismaDelegate = (this.prisma as any).invitation;
-      if (prismaDelegate?.update) {
-        await prismaDelegate.update({
-          where: { token },
-          data: { used: true },
-        });
-      } else {
-        await this.prisma.$executeRawUnsafe(
-          `UPDATE "invitations" SET "used" = TRUE WHERE "token" = $1`,
-          token,
-        );
-      }
-    } catch {
-      try {
-        await this.prisma.$executeRawUnsafe(
-          `UPDATE "invitations" SET "used" = TRUE WHERE "token" = $1`,
-          token,
-        );
-      } catch (err) {
-        this.logger.error(`Error marking invitation used: ${(err as Error).message}`);
-      }
+      await this.prisma.invitation.update({
+        where: { token },
+        data: { used: true },
+      });
+    } catch (err) {
+      this.logger.error(`Error marking invitation used: ${(err as Error).message}`);
     }
 
     // 3. Log to AuditLog
@@ -272,27 +180,12 @@ export class InvitationsService implements OnModuleInit {
     let rows: InvitationItem[] = [];
 
     try {
-      const prismaDelegate = (this.prisma as any).invitation;
-      if (prismaDelegate?.findMany) {
-        rows = await prismaDelegate.findMany({
-          orderBy: { created_at: 'desc' },
-        });
-      }
-    } catch {
-      // Fallback
-    }
-
-    if (!rows || rows.length === 0) {
-      try {
-        const sqlRows: any = await this.prisma.$queryRawUnsafe(
-          `SELECT "id", "email", "role", "token", "expires_at", "used", "created_at"
-           FROM "invitations" ORDER BY "created_at" DESC`,
-        );
-        rows = sqlRows || [];
-      } catch (err) {
-        this.logger.error(`Error querying invitations: ${(err as Error).message}`);
-        rows = [];
-      }
+      rows = await this.prisma.invitation.findMany({
+        orderBy: { created_at: 'desc' },
+      });
+    } catch (err) {
+      this.logger.error(`Error querying invitations: ${(err as Error).message}`);
+      rows = [];
     }
 
     const now = new Date();
