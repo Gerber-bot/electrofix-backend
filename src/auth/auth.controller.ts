@@ -10,6 +10,7 @@ import {
   UseGuards,
   BadRequestException,
   ForbiddenException,
+  UnauthorizedException,
 } from '@nestjs/common';
 import type { Request } from 'express';
 import { AuthService } from './auth.service';
@@ -18,15 +19,23 @@ import { RolesGuard } from './roles.guard';
 import { UserRole, isValidRole } from './roles.enum';
 import { AuthenticatedUser } from './auth.middleware';
 
+export interface LoginDto {
+  email: string;
+  password: string;
+}
+
 export interface CreateAdminDto {
   email: string;
   password: string;
+  name?: string;
 }
 
 export interface CreateUserDto {
   email: string;
   password: string;
   role: UserRole;
+  name?: string;
+  tenantId?: string;
 }
 
 export interface UpdateRoleDto {
@@ -38,6 +47,41 @@ export class AuthController {
   constructor(private readonly authService: AuthService) {}
 
   /**
+   * Local demo login endpoint.
+   */
+  @Post('login')
+  async login(@Body() body: LoginDto) {
+    const email = body?.email;
+    const password = body?.password;
+
+    if (!email || !password) {
+      throw new BadRequestException('Se requieren email y contraseña.');
+    }
+
+    return this.authService.login(email, password);
+  }
+
+  /**
+   * Returns current authenticated user and session info.
+   */
+  @Get('me')
+  async me(@Req() req: Request) {
+    const user = (req as unknown as { user?: AuthenticatedUser })['user'];
+    if (!user) {
+      throw new UnauthorizedException('No hay sesión activa.');
+    }
+    return { ok: true, user };
+  }
+
+  /**
+   * Logs out user (stateless JWT confirmation).
+   */
+  @Post('logout')
+  async logout() {
+    return { ok: true, message: 'Sesión finalizada exitosamente.' };
+  }
+
+  /**
    * Bootstrapping endpoint to initialize the first admin user.
    * If users already exist in the system, requires caller to have 'admin' role.
    */
@@ -47,16 +91,15 @@ export class AuthController {
     const password = body?.password;
 
     if (!email || !password) {
-      throw new BadRequestException('Fields "email" and "password" are required.');
+      throw new BadRequestException(
+        'Fields "email" and "password" are required.',
+      );
     }
 
     const totalUsers = await this.authService.getUserCount();
     if (totalUsers > 0) {
       const user = (req as unknown as { user?: AuthenticatedUser })['user'];
-      const userRole =
-        user?.role ||
-        (user?.app_metadata?.role as UserRole | undefined) ||
-        (user?.user_metadata?.role as UserRole | undefined);
+      const userRole = user?.role;
 
       if (userRole !== 'admin') {
         throw new ForbiddenException(
@@ -66,10 +109,16 @@ export class AuthController {
     }
 
     try {
-      const user = await this.authService.createUserWithRole(email, password, 'admin');
+      const user = await this.authService.createUserWithRole(
+        email,
+        password,
+        'admin',
+        body.name,
+      );
       return { ok: true, user };
     } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : 'Error creating admin';
+      const message =
+        err instanceof Error ? err.message : 'Error creating admin';
       throw new BadRequestException(message);
     }
   }
@@ -86,14 +135,22 @@ export class AuthController {
     const role = body?.role;
 
     if (!email || !password || !role) {
-      throw new BadRequestException('Fields "email", "password" and "role" are required.');
+      throw new BadRequestException(
+        'Fields "email", "password" and "role" are required.',
+      );
     }
 
     if (!isValidRole(role)) {
-      throw new BadRequestException(`Invalid role: ${role}`);
+      throw new BadRequestException(`Invalid role: ${String(role)}`);
     }
 
-    const user = await this.authService.createUserWithRole(email, password, role);
+    const user = await this.authService.createUserWithRole(
+      email,
+      password,
+      role,
+      body.name,
+      body.tenantId,
+    );
     return { ok: true, user };
   }
 

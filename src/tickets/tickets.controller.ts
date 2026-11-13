@@ -1,17 +1,30 @@
-import { Controller, Get, Post, Patch, Param, Body, Query, UseGuards } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  Post,
+  Patch,
+  Param,
+  Body,
+  Query,
+  Req,
+  UseGuards,
+} from '@nestjs/common';
+import type { Request } from 'express';
 import { TicketsService } from './tickets.service';
 import { CreateTicketDto, UpdateTicketDto } from './dto/tickets.dto';
 import { TicketStatus } from '@prisma/client';
 import { RolesGuard } from '../auth/roles.guard';
 import { Roles } from '../auth/roles.decorator';
+import { AuthenticatedUser } from '../auth/auth.middleware';
 
 @Controller('tickets')
 export class TicketsController {
   constructor(private readonly ticketsService: TicketsService) {}
 
   @Get('tenant')
-  async getTenant() {
-    return this.ticketsService.getFirstTenant();
+  async getTenant(@Req() req: Request) {
+    const user = (req as unknown as { user?: AuthenticatedUser })['user'];
+    return this.ticketsService.getTenant(user);
   }
 
   @Get('catalog')
@@ -20,8 +33,13 @@ export class TicketsController {
   }
 
   @Get('search')
-  async search(@Query('dni') dni?: string, @Query('token') token?: string) {
-    return this.ticketsService.searchTickets(dni, token);
+  async search(
+    @Query('dni') dni?: string,
+    @Query('token') token?: string,
+    @Req() req?: Request,
+  ) {
+    const user = (req as unknown as { user?: AuthenticatedUser })?.['user'];
+    return this.ticketsService.searchTickets(dni, token, user);
   }
 
   @Get('track/:token')
@@ -30,43 +48,64 @@ export class TicketsController {
   }
 
   @Get('by-dni/:dni')
-  async getByDni(@Param('dni') dni: string) {
-    return this.ticketsService.getTicketsByDni(dni);
+  async getByDni(@Param('dni') dni: string, @Req() req: Request) {
+    const user = (req as unknown as { user?: AuthenticatedUser })['user'];
+    return this.ticketsService.getTicketsByDni(dni, user);
   }
 
   @Get()
-  async getAll(@Query('status') status?: TicketStatus) {
-    return this.ticketsService.getTickets(status);
+  @UseGuards(RolesGuard)
+  @Roles('admin', 'taller', 'tecnico', 'operador')
+  async getAll(@Query('status') status?: TicketStatus, @Req() req?: Request) {
+    const user = (req as unknown as { user?: AuthenticatedUser })?.['user'];
+    return this.ticketsService.getTickets(user, status);
   }
 
   @Get(':id')
-  async getById(@Param('id') id: string) {
-    return this.ticketsService.getTicketById(id);
+  @UseGuards(RolesGuard)
+  @Roles('admin', 'taller', 'tecnico', 'operador')
+  async getById(@Param('id') id: string, @Req() req: Request) {
+    const user = (req as unknown as { user?: AuthenticatedUser })['user'];
+    return this.ticketsService.getTicketById(id, user);
   }
 
   @Patch([':id/approve', 'track/:token/approve', 'approve/:id'])
-  async approveBudget(@Param('id') id?: string, @Param('token') token?: string) {
+  async approveBudget(
+    @Param('id') id?: string,
+    @Param('token') token?: string,
+  ) {
     return this.ticketsService.approveBudget(id || token || '');
   }
 
   @Post()
   @UseGuards(RolesGuard)
   @Roles('admin', 'taller', 'tecnico', 'operador')
-  async create(@Body() dto: CreateTicketDto) {
-    return this.ticketsService.createTicket(dto);
+  async create(@Body() dto: CreateTicketDto, @Req() req: Request) {
+    const user = (req as unknown as { user?: AuthenticatedUser })['user'];
+    return this.ticketsService.createTicket(dto, user);
   }
 
   @Patch(':id')
   @UseGuards(RolesGuard)
   @Roles('admin', 'taller', 'tecnico', 'operador')
-  async update(@Param('id') id: string, @Body() dto: UpdateTicketDto) {
-    return this.ticketsService.updateTicket(id, dto);
+  async update(
+    @Param('id') id: string,
+    @Body() dto: UpdateTicketDto,
+    @Req() req: Request,
+  ) {
+    const user = (req as unknown as { user?: AuthenticatedUser })['user'];
+    return this.ticketsService.updateTicket(id, dto, user);
   }
 
   @Patch(':id/*')
   @UseGuards(RolesGuard)
   @Roles('admin', 'taller', 'tecnico', 'operador')
-  async updateNested(@Param('id') id: string, @Body() dto: UpdateTicketDto) {
-    return this.ticketsService.updateTicket(id, dto);
+  async updateNested(
+    @Param('id') id: string,
+    @Body() dto: UpdateTicketDto,
+    @Req() req: Request,
+  ) {
+    const user = (req as unknown as { user?: AuthenticatedUser })['user'];
+    return this.ticketsService.updateTicket(id, dto, user);
   }
 }

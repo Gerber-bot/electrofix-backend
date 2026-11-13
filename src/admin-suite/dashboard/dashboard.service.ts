@@ -18,8 +18,17 @@ export interface DashboardMetrics {
 
 export interface ChartDatasets {
   ticketsByDay: Array<{ date: string; label: string; count: number }>;
-  productivityByTechnician: Array<{ name: string; count: number; completed: number }>;
-  statusDistribution: Array<{ status: string; label: string; count: number; percentage: number }>;
+  productivityByTechnician: Array<{
+    name: string;
+    count: number;
+    completed: number;
+  }>;
+  statusDistribution: Array<{
+    status: string;
+    label: string;
+    count: number;
+    percentage: number;
+  }>;
   hourlyDistribution: Array<{ hour: number; label: string; count: number }>;
   deviceTypeDistribution: Array<{ type: string; count: number }>;
 }
@@ -47,7 +56,11 @@ export class DashboardService {
   async getMetrics(): Promise<DashboardMetrics> {
     try {
       const now = new Date();
-      const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+      const startOfToday = new Date(
+        now.getFullYear(),
+        now.getMonth(),
+        now.getDate(),
+      );
       const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
 
       // 1. Fetch tickets
@@ -55,7 +68,9 @@ export class DashboardService {
       try {
         tickets = await this.prisma.repairTicket.findMany();
       } catch (err) {
-        this.logger.warn(`Could not fetch tickets for metrics: ${(err as Error).message}`);
+        this.logger.warn(
+          `Could not fetch tickets for metrics: ${(err as Error).message}`,
+        );
       }
 
       // 2. Fetch users for technician count
@@ -63,22 +78,32 @@ export class DashboardService {
       try {
         const users = await this.authService.getAllUsers();
         activeTechniciansCount = users.filter(
-          (u) => (u.role === 'tecnico' || u.role === 'taller') && (!u.banned_until || new Date(u.banned_until) <= now),
+          (u) =>
+            (u.role === 'tecnico' || u.role === 'taller') &&
+            (!u.banned_until || new Date(u.banned_until) <= now),
         ).length;
       } catch {
         activeTechniciansCount = 2; // sensible fallback
       }
 
       // 3. Compute ticket metrics
-      const ticketsInRepair = tickets.filter((t) => t.status === 'IN_REPAIR').length;
-      const ticketsDelivered = tickets.filter((t) => t.status === 'DELIVERED').length;
+      const ticketsInRepair = tickets.filter(
+        (t) => t.status === 'IN_REPAIR',
+      ).length;
+      const ticketsDelivered = tickets.filter(
+        (t) => t.status === 'DELIVERED',
+      ).length;
       const ticketsCreatedToday = tickets.filter(
         (t) => new Date(t.createdAt) >= startOfToday,
       ).length;
 
       // Revenue this month (sum of finalCost or estimatedCost)
       const monthlyEstimatedRevenue = tickets
-        .filter((t) => new Date(t.createdAt) >= startOfMonth || (t.updatedAt && new Date(t.updatedAt) >= startOfMonth))
+        .filter(
+          (t) =>
+            new Date(t.createdAt) >= startOfMonth ||
+            (t.updatedAt && new Date(t.updatedAt) >= startOfMonth),
+        )
         .reduce((sum, t) => {
           const cost = Number(t.finalCost) || Number(t.estimatedCost) || 0;
           return sum + cost;
@@ -108,11 +133,15 @@ export class DashboardService {
           const end = new Date(t.updatedAt).getTime();
           return acc + Math.max(0, end - start);
         }, 0);
-        averageRepairTimeHours = Math.round(totalDurationMs / deliveredTickets.length / (1000 * 60 * 60));
+        averageRepairTimeHours = Math.round(
+          totalDurationMs / deliveredTickets.length / (1000 * 60 * 60),
+        );
       } else {
         averageRepairTimeHours = 24; // Default baseline ~24h
       }
-      const averageRepairTimeDays = Number((averageRepairTimeHours / 24).toFixed(1));
+      const averageRepairTimeDays = Number(
+        (averageRepairTimeHours / 24).toFixed(1),
+      );
 
       // 4. Audit Log metrics (actions by role, operator activity, peak hours)
       const actionsByRole: Record<string, number> = {
@@ -156,7 +185,9 @@ export class DashboardService {
       if (operatorActivityCount === 0) {
         operatorActivityCount = tickets.length;
         actionsByRole['operador'] = tickets.length;
-        actionsByRole['tecnico'] = tickets.filter((t) => t.status !== 'RECEIVED').length;
+        actionsByRole['tecnico'] = tickets.filter(
+          (t) => t.status !== 'RECEIVED',
+        ).length;
         actionsByRole['admin'] = Math.ceil(tickets.length * 0.4);
       }
 
@@ -179,7 +210,9 @@ export class DashboardService {
         peakActivityHours,
       };
     } catch (err) {
-      this.logger.error(`Error computing dashboard metrics: ${(err as Error).message}`);
+      this.logger.error(
+        `Error computing dashboard metrics: ${(err as Error).message}`,
+      );
       return {
         ticketsInRepair: 0,
         ticketsDelivered: 0,
@@ -204,19 +237,36 @@ export class DashboardService {
           orderBy: { createdAt: 'asc' },
         });
       } catch (err) {
-        this.logger.warn(`Could not load tickets for charts: ${(err as Error).message}`);
+        this.logger.warn(
+          `Could not load tickets for charts: ${(err as Error).message}`,
+        );
       }
 
       const now = new Date();
 
       // 1. Line chart: tickets by day (last 14 days)
       const daysCount = 14;
-      const ticketsByDay: Array<{ date: string; label: string; count: number }> = [];
+      const ticketsByDay: Array<{
+        date: string;
+        label: string;
+        count: number;
+      }> = [];
       for (let i = daysCount - 1; i >= 0; i--) {
-        const d = new Date(now.getFullYear(), now.getMonth(), now.getDate() - i);
-        const nextD = new Date(now.getFullYear(), now.getMonth(), now.getDate() - i + 1);
+        const d = new Date(
+          now.getFullYear(),
+          now.getMonth(),
+          now.getDate() - i,
+        );
+        const nextD = new Date(
+          now.getFullYear(),
+          now.getMonth(),
+          now.getDate() - i + 1,
+        );
         const iso = d.toISOString().split('T')[0];
-        const dayLabel = d.toLocaleDateString('es-AR', { weekday: 'short', day: 'numeric' });
+        const dayLabel = d.toLocaleDateString('es-AR', {
+          weekday: 'short',
+          day: 'numeric',
+        });
 
         const count = tickets.filter((t) => {
           const created = new Date(t.createdAt);
@@ -236,27 +286,41 @@ export class DashboardService {
         const dev = t.deviceType || 'Otros';
         deviceMap[dev] = (deviceMap[dev] || 0) + 1;
       }
-      const deviceTypeDistribution = Object.entries(deviceMap).map(([type, count]) => ({
-        type,
-        count,
-      }));
+      const deviceTypeDistribution = Object.entries(deviceMap).map(
+        ([type, count]) => ({
+          type,
+          count,
+        }),
+      );
 
       // Productivity by technician
-      let technicians: string[] = ['Técnico Central', 'Banco de Trabajo 1', 'Laboratorio SMD'];
+      let technicians: string[] = [
+        'Técnico Central',
+        'Banco de Trabajo 1',
+        'Laboratorio SMD',
+      ];
       try {
         const users = await this.authService.getAllUsers();
-        const techUsers = users.filter((u) => u.role === 'tecnico' || u.role === 'taller');
+        const techUsers = users.filter(
+          (u) => u.role === 'tecnico' || u.role === 'taller',
+        );
         if (techUsers.length > 0) {
-          technicians = techUsers.map((u) => u.email?.split('@')[0] || 'Técnico');
+          technicians = techUsers.map(
+            (u) => u.email?.split('@')[0] || 'Técnico',
+          );
         }
       } catch {}
 
       const productivityByTechnician = technicians.map((name, index) => {
-        const assignedTickets = tickets.filter((_, i) => i % technicians.length === index);
+        const assignedTickets = tickets.filter(
+          (_, i) => i % technicians.length === index,
+        );
         return {
           name,
           count: assignedTickets.length,
-          completed: assignedTickets.filter((t) => t.status === 'DELIVERED' || t.status === 'READY_FOR_PICKUP').length,
+          completed: assignedTickets.filter(
+            (t) => t.status === 'DELIVERED' || t.status === 'READY_FOR_PICKUP',
+          ).length,
         };
       });
 
@@ -280,12 +344,14 @@ export class DashboardService {
         }
       }
 
-      const statusDistribution = Object.entries(statusCounts).map(([status, count]) => ({
-        status,
-        label: STATUS_LABELS[status] || status,
-        count,
-        percentage: Math.round((count / totalTickets) * 100),
-      }));
+      const statusDistribution = Object.entries(statusCounts).map(
+        ([status, count]) => ({
+          status,
+          label: STATUS_LABELS[status] || status,
+          count,
+          percentage: Math.round((count / totalTickets) * 100),
+        }),
+      );
 
       // 4. Activity heatmap / hourly distribution (0-23 hours)
       const hourlyCounts: Record<number, number> = {};
@@ -296,14 +362,16 @@ export class DashboardService {
         hourlyCounts[hour] = (hourlyCounts[hour] || 0) + 1;
       }
 
-      const hourlyDistribution = Object.entries(hourlyCounts).map(([hourStr, count]) => {
-        const hour = Number(hourStr);
-        return {
-          hour,
-          label: `${hour.toString().padStart(2, '0')}:00`,
-          count,
-        };
-      });
+      const hourlyDistribution = Object.entries(hourlyCounts).map(
+        ([hourStr, count]) => {
+          const hour = Number(hourStr);
+          return {
+            hour,
+            label: `${hour.toString().padStart(2, '0')}:00`,
+            count,
+          };
+        },
+      );
 
       return {
         ticketsByDay,
@@ -313,7 +381,9 @@ export class DashboardService {
         deviceTypeDistribution,
       };
     } catch (err) {
-      this.logger.error(`Error generating charts dataset: ${(err as Error).message}`);
+      this.logger.error(
+        `Error generating charts dataset: ${(err as Error).message}`,
+      );
       return {
         ticketsByDay: [],
         productivityByTechnician: [],

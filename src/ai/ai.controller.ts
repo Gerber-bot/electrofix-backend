@@ -31,6 +31,10 @@ export class AiController {
 
   @Post(['chat', 'quote'])
   async chat(@Body() body: ChatDto) {
-    return this.aiService.handleCustomerMessage(body?.tenantId, body?.message || '', body?.customerDni);
+    return this.aiService.handleCustomerMessage(
+      body?.tenantId,
+      body?.message || '',
+      body?.customerDni,
+    );
   }
 }

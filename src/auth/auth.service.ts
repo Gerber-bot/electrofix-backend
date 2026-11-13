@@ -2,534 +2,260 @@ import {
   Injectable,
   BadRequestException,
   NotFoundException,
-  InternalServerErrorException,
+  UnauthorizedException,
+  ForbiddenException,
 } from '@nestjs/common';
-import { createClient, SupabaseClient } from '@supabase/supabase-js';
+import * as bcrypt from 'bcryptjs';
+import * as jwt from 'jsonwebtoken';
 import { PrismaService } from '../prisma/prisma.service';
 import { UserRole, isValidRole } from './roles.enum';
 
-try {
-  process.loadEnvFile?.();
-} catch {
-  // .env file is optional when environment variables are already provided
-}
-
 export interface AuthUserResponse {
   id: string;
-  email: string | null;
+  email: string;
+  name?: string | null;
   role: UserRole;
-  email_confirmed_at: Date | string | null;
+  tenantId?: string | null;
+  tenant?: {
+    id: string;
+    name: string;
+    phone?: string | null;
+  } | null;
+  email_confirmed_at?: Date | string | null;
   banned_until?: Date | string | null;
   created_at: Date | string;
   updated_at?: Date | string | null;
 }
 
+export interface LoginResult {
+  ok: boolean;
+  access_token: string;
+  user: AuthUserResponse;
+}
+
 @Injectable()
 export class AuthService {
-  private supabaseAdmin: SupabaseClient | null = null;
+  private readonly jwtSecret: string;
 
   constructor(private readonly prisma: PrismaService) {
-    const supabaseUrl = process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL;
-    const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+    this.jwtSecret =
+      process.env.JWT_SECRET || 'electrofix-super-secret-local-jwt-key-32chars';
+  }
 
-    if (
-      supabaseUrl &&
-      supabaseServiceRoleKey &&
-      !supabaseServiceRoleKey.includes('placeholder')
-    ) {
-      this.supabaseAdmin = createClient(supabaseUrl, supabaseServiceRoleKey, {
-        auth: {
-          autoRefreshToken: false,
-          persistSession: false,
-        },
-      });
-    }
+  private mapUser(user: any): AuthUserResponse {
+    return {
+      id: user.id,
+      email: user.email,
+      name: user.name || null,
+      role: user.role as UserRole,
+      tenantId: user.tenantId || null,
+      tenant: user.tenant
+        ? {
+            id: user.tenant.id,
+            name: user.tenant.name,
+            phone: user.tenant.phone,
+          }
+        : null,
+      email_confirmed_at: user.createdAt,
+      banned_until: user.bannedUntil ? user.bannedUntil.toISOString() : null,
+      created_at: user.createdAt,
+      updated_at: user.updatedAt,
+    };
+  }
+
+  private generateToken(user: AuthUserResponse): string {
+    return jwt.sign(
+      {
+        id: user.id,
+        email: user.email,
+        name: user.name,
+        role: user.role,
+        tenantId: user.tenantId,
+        tenant: user.tenant,
+      },
+      this.jwtSecret,
+      { expiresIn: '7d' },
+    );
   }
 
   /**
-   * Returns the count of registered users in the system.
+   * Authenticates user against local SQLite database using bcrypt.
+   */
+  async login(email: string, password: string): Promise<LoginResult> {
+    const normalizedEmail = email.trim().toLowerCase();
+    const user = await this.prisma.user.findUnique({
+      where: { email: normalizedEmail },
+      include: { tenant: true },
+    });
+
+    if (!user) {
+      throw new UnauthorizedException(
+        'Credenciales inválidas. Verifica tu email y contraseña.',
+      );
+    }
+
+    if (user.bannedUntil && user.bannedUntil > new Date()) {
+      throw new ForbiddenException('La cuenta ha sido suspendida.');
+    }
+
+    const passwordValid = bcrypt.compareSync(password, user.passwordHash);
+    if (!passwordValid) {
+      throw new UnauthorizedException(
+        'Credenciales inválidas. Verifica tu email y contraseña.',
+      );
+    }
+
+    const mapped = this.mapUser(user);
+    const token = this.generateToken(mapped);
+
+    return {
+      ok: true,
+      access_token: token,
+      user: mapped,
+    };
+  }
+
+  /**
+   * Returns count of registered users.
    */
   async getUserCount(): Promise<number> {
     try {
-      const result = await this.prisma.$queryRawUnsafe<Array<{ count: number | string }>>(
-        'SELECT COUNT(*)::int as count FROM auth.users;',
-      );
-      return Number(result[0]?.count ?? 0);
+      return await this.prisma.user.count();
     } catch {
-      const users = await this.getAllUsers().catch(() => []);
-      return users.length;
+      return 0;
     }
   }
 
   /**
-   * Creates a new user with the specified role using Supabase Admin API
-   * or falls back to direct Prisma SQL upsert if needed.
+   * Creates a new user with the specified role in local SQLite database.
    */
   async createUserWithRole(
     email: string,
     password: string,
     role: UserRole,
+    name?: string,
+    tenantId?: string,
   ): Promise<AuthUserResponse> {
     const normalizedEmail = email.trim().toLowerCase();
 
     if (!isValidRole(role)) {
-      throw new BadRequestException(`Invalid role: ${role}`);
+      throw new BadRequestException(`Rol no válido: ${String(role)}`);
     }
 
-    if (this.supabaseAdmin) {
-      try {
-        const { data, error } = await this.supabaseAdmin.auth.admin.createUser({
-          email: normalizedEmail,
-          password,
-          email_confirm: true,
-          user_metadata: { role },
-          app_metadata: { role },
-        });
-
-        if (!error && data?.user) {
-          const u = data.user;
-          return {
-            id: u.id,
-            email: u.email ?? normalizedEmail,
-            role,
-            email_confirmed_at: u.email_confirmed_at ?? new Date().toISOString(),
-            banned_until: (u as { banned_until?: string | null }).banned_until ?? null,
-            created_at: u.created_at,
-            updated_at: u.updated_at,
-          };
-        }
-
-        // If error is not a service key or network configuration issue, throw
-        if (
-          error &&
-          !error.message?.toLowerCase().includes('invalid api key') &&
-          !error.message?.toLowerCase().includes('jwt')
-        ) {
-          throw new BadRequestException(error.message);
-        }
-      } catch (err: unknown) {
-        if (err instanceof BadRequestException) {
-          throw err;
-        }
-        // Otherwise proceed to Prisma fallback
-      }
-    }
-
-    // Prisma Fallback
-    try {
-      const rows = await this.prisma.$queryRawUnsafe<
-        Array<{
-          id: string;
-          email: string | null;
-          role: string;
-          email_confirmed_at: Date | string | null;
-          raw_user_meta_data: Record<string, unknown> | null;
-          raw_app_meta_data: Record<string, unknown> | null;
-          banned_until: Date | string | null;
-          created_at: Date | string;
-          updated_at: Date | string | null;
-        }>
-      >(
-        `
-        WITH upserted_user AS (
-          INSERT INTO auth.users (
-            instance_id,
-            id,
-            aud,
-            role,
-            email,
-            encrypted_password,
-            email_confirmed_at,
-            confirmation_token,
-            recovery_token,
-            email_change_token_new,
-            email_change,
-            phone_change,
-            phone_change_token,
-            email_change_token_current,
-            email_change_confirm_status,
-            reauthentication_token,
-            raw_app_meta_data,
-            raw_user_meta_data,
-            is_sso_user,
-            is_anonymous,
-            created_at,
-            updated_at
-          )
-          VALUES (
-            '00000000-0000-0000-0000-000000000000'::uuid,
-            gen_random_uuid(),
-            'authenticated',
-            'authenticated',
-            $1,
-            extensions.crypt($2, extensions.gen_salt('bf', 10)),
-            now(),
-            '',
-            '',
-            '',
-            '',
-            '',
-            '',
-            '',
-            0,
-            '',
-            jsonb_build_object('provider', 'email', 'providers', json_build_array('email'), 'role', $3::text),
-            jsonb_build_object('email', $1, 'email_verified', true, 'phone_verified', false, 'role', $3::text),
-            false,
-            false,
-            now(),
-            now()
-          )
-          ON CONFLICT (email) WHERE (is_sso_user = false)
-          DO UPDATE SET
-            encrypted_password = extensions.crypt($2, extensions.gen_salt('bf', 10)),
-            email_confirmed_at = COALESCE(auth.users.email_confirmed_at, now()),
-            raw_app_meta_data = COALESCE(auth.users.raw_app_meta_data, '{}'::jsonb) || jsonb_build_object('provider', 'email', 'providers', json_build_array('email'), 'role', $3::text),
-            raw_user_meta_data = COALESCE(auth.users.raw_user_meta_data, '{}'::jsonb) || jsonb_build_object('email', $1, 'email_verified', true, 'role', $3::text),
-            updated_at = now()
-          RETURNING id, email, role, email_confirmed_at, raw_user_meta_data, raw_app_meta_data, banned_until, created_at, updated_at
-        ),
-        inserted_identity AS (
-          INSERT INTO auth.identities (
-            id,
-            user_id,
-            provider_id,
-            identity_data,
-            provider,
-            last_sign_in_at,
-            created_at,
-            updated_at
-          )
-          SELECT
-            gen_random_uuid(),
-            u.id,
-            u.id::text,
-            jsonb_build_object('sub', u.id::text, 'email', u.email, 'email_verified', true, 'phone_verified', false),
-            'email',
-            now(),
-            now(),
-            now()
-          FROM upserted_user u
-          WHERE NOT EXISTS (
-            SELECT 1 FROM auth.identities i WHERE i.user_id = u.id AND i.provider = 'email'
-          )
-        )
-        SELECT * FROM upserted_user;
-        `,
-        normalizedEmail,
-        password,
-        role,
+    const existing = await this.prisma.user.findUnique({
+      where: { email: normalizedEmail },
+    });
+    if (existing) {
+      throw new BadRequestException(
+        `Ya existe un usuario con el email ${normalizedEmail}.`,
       );
-
-      const created = rows[0];
-      return {
-        id: created.id,
-        email: created.email,
-        role,
-        email_confirmed_at: created.email_confirmed_at,
-        banned_until: created.banned_until,
-        created_at: created.created_at,
-        updated_at: created.updated_at,
-      };
-    } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : 'Error creating user via database';
-      throw new InternalServerErrorException(msg);
     }
+
+    const passwordHash = bcrypt.hashSync(password, 10);
+
+    // If tenantId not provided and role is workshop-based, assign first tenant by default
+    let resolvedTenantId = tenantId;
+    if (!resolvedTenantId && role !== 'admin') {
+      const defaultTenant = await this.prisma.tenant.findFirst();
+      resolvedTenantId = defaultTenant?.id;
+    }
+
+    const created = await this.prisma.user.create({
+      data: {
+        email: normalizedEmail,
+        passwordHash,
+        name: name || normalizedEmail.split('@')[0],
+        role,
+        tenantId: resolvedTenantId || null,
+      },
+      include: { tenant: true },
+    });
+
+    return this.mapUser(created);
   }
 
   /**
-   * Updates user role in Supabase auth metadata and database.
+   * Updates user role in database.
    */
-  async updateUserRole(userId: string, role: UserRole): Promise<AuthUserResponse> {
-    if (!isValidRole(role)) {
-      throw new BadRequestException(`Invalid role: ${role}`);
+  async updateUserRole(
+    userId: string,
+    newRole: UserRole,
+  ): Promise<AuthUserResponse> {
+    if (!isValidRole(newRole)) {
+      throw new BadRequestException(`Rol no válido: ${String(newRole)}`);
     }
 
-    if (this.supabaseAdmin) {
-      try {
-        const { data, error } = await this.supabaseAdmin.auth.admin.updateUserById(userId, {
-          app_metadata: { role },
-          user_metadata: { role },
-        });
-
-        if (!error && data?.user) {
-          const u = data.user;
-          return {
-            id: u.id,
-            email: u.email ?? null,
-            role,
-            email_confirmed_at: u.email_confirmed_at ?? null,
-            banned_until: (u as { banned_until?: string | null }).banned_until ?? null,
-            created_at: u.created_at,
-            updated_at: u.updated_at,
-          };
-        }
-      } catch {
-        // Fallback to Prisma below
-      }
+    const user = await this.prisma.user.findUnique({ where: { id: userId } });
+    if (!user) {
+      throw new NotFoundException(`Usuario con ID ${userId} no encontrado.`);
     }
 
-    try {
-      const rows = await this.prisma.$queryRawUnsafe<
-        Array<{
-          id: string;
-          email: string | null;
-          email_confirmed_at: Date | string | null;
-          raw_app_meta_data: Record<string, unknown> | null;
-          raw_user_meta_data: Record<string, unknown> | null;
-          banned_until: Date | string | null;
-          created_at: Date | string;
-          updated_at: Date | string | null;
-        }>
-      >(
-        `
-        UPDATE auth.users
-        SET
-          raw_app_meta_data = COALESCE(raw_app_meta_data, '{}'::jsonb) || jsonb_build_object('role', $2::text),
-          raw_user_meta_data = COALESCE(raw_user_meta_data, '{}'::jsonb) || jsonb_build_object('role', $2::text),
-          updated_at = now()
-        WHERE id = $1::uuid
-        RETURNING id, email, email_confirmed_at, raw_app_meta_data, raw_user_meta_data, banned_until, created_at, updated_at;
-        `,
-        userId,
-        role,
-      );
+    const updated = await this.prisma.user.update({
+      where: { id: userId },
+      data: { role: newRole },
+      include: { tenant: true },
+    });
 
-      if (!rows || rows.length === 0) {
-        throw new NotFoundException(`User with ID ${userId} not found`);
-      }
-
-      const u = rows[0];
-      return {
-        id: u.id,
-        email: u.email,
-        role,
-        email_confirmed_at: u.email_confirmed_at,
-        banned_until: u.banned_until,
-        created_at: u.created_at,
-        updated_at: u.updated_at,
-      };
-    } catch (err: unknown) {
-      if (err instanceof NotFoundException) throw err;
-      const msg = err instanceof Error ? err.message : 'Error updating user role';
-      throw new InternalServerErrorException(msg);
-    }
+    return this.mapUser(updated);
   }
 
   /**
    * Suspends / bans a user.
    */
   async disableUser(userId: string): Promise<{ ok: boolean; message: string }> {
-    if (this.supabaseAdmin) {
-      try {
-        const { error } = await this.supabaseAdmin.auth.admin.updateUserById(userId, {
-          ban_duration: '876000h',
-        });
-        if (!error) {
-          return { ok: true, message: 'User suspended successfully' };
-        }
-      } catch {
-        // Fallback to Prisma below
-      }
+    const user = await this.prisma.user.findUnique({ where: { id: userId } });
+    if (!user) {
+      throw new NotFoundException(`Usuario con ID ${userId} no encontrado.`);
     }
 
-    try {
-      await this.prisma.$queryRawUnsafe(
-        `
-        UPDATE auth.users
-        SET banned_until = now() + interval '100 years', updated_at = now()
-        WHERE id = $1::uuid;
-        `,
-        userId,
-      );
-      return { ok: true, message: 'User suspended successfully' };
-    } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : 'Error suspending user';
-      throw new InternalServerErrorException(msg);
-    }
+    // Ban until 100 years in future
+    const bannedUntil = new Date(Date.now() + 100 * 365 * 24 * 60 * 60 * 1000);
+    await this.prisma.user.update({
+      where: { id: userId },
+      data: { bannedUntil },
+    });
+
+    return {
+      ok: true,
+      message: `Usuario ${userId} deshabilitado exitosamente.`,
+    };
   }
 
   /**
-   * Completely removes a user.
+   * Permanently deletes a user.
    */
   async deleteUser(userId: string): Promise<{ ok: boolean; message: string }> {
-    if (this.supabaseAdmin) {
-      try {
-        const { error } = await this.supabaseAdmin.auth.admin.deleteUser(userId);
-        if (!error) {
-          return { ok: true, message: 'User deleted successfully' };
-        }
-      } catch {
-        // Fallback to Prisma below
-      }
+    const user = await this.prisma.user.findUnique({ where: { id: userId } });
+    if (!user) {
+      throw new NotFoundException(`Usuario con ID ${userId} no encontrado.`);
     }
 
-    try {
-      await this.prisma.$queryRawUnsafe(
-        `DELETE FROM auth.identities WHERE user_id = $1::uuid;`,
-        userId,
-      );
-      await this.prisma.$queryRawUnsafe(
-        `DELETE FROM auth.users WHERE id = $1::uuid;`,
-        userId,
-      );
-      return { ok: true, message: 'User deleted successfully' };
-    } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : 'Error deleting user';
-      throw new InternalServerErrorException(msg);
-    }
+    await this.prisma.user.delete({ where: { id: userId } });
+    return { ok: true, message: `Usuario ${userId} eliminado exitosamente.` };
   }
 
   /**
-   * Lists all users with extracted role and status.
+   * Lists all users.
    */
   async getAllUsers(): Promise<AuthUserResponse[]> {
-    if (this.supabaseAdmin) {
-      try {
-        const { data, error } = await this.supabaseAdmin.auth.admin.listUsers();
-        if (!error && data?.users) {
-          return data.users.map((u) => {
-            const rawRole =
-              (u.app_metadata?.role as string | undefined) ||
-              (u.user_metadata?.role as string | undefined) ||
-              'cliente';
-            const role = isValidRole(rawRole) ? rawRole : 'cliente';
-
-            return {
-              id: u.id,
-              email: u.email ?? null,
-              role,
-              email_confirmed_at: u.email_confirmed_at ?? null,
-              banned_until: (u as { banned_until?: string | null }).banned_until ?? null,
-              created_at: u.created_at,
-              updated_at: u.updated_at,
-            };
-          });
-        }
-      } catch {
-        // Fallback to Prisma below
-      }
-    }
-
-    try {
-      const rows = await this.prisma.$queryRawUnsafe<
-        Array<{
-          id: string;
-          email: string | null;
-          email_confirmed_at: Date | string | null;
-          raw_app_meta_data: Record<string, unknown> | null;
-          raw_user_meta_data: Record<string, unknown> | null;
-          banned_until: Date | string | null;
-          created_at: Date | string;
-          updated_at: Date | string | null;
-        }>
-      >(
-        `
-        SELECT id, email, email_confirmed_at, raw_app_meta_data, raw_user_meta_data, banned_until, created_at, updated_at
-        FROM auth.users
-        ORDER BY created_at DESC;
-        `,
-      );
-
-      return rows.map((u) => {
-        const rawRole =
-          ((u.raw_app_meta_data as Record<string, unknown> | null)?.role as string | undefined) ||
-          ((u.raw_user_meta_data as Record<string, unknown> | null)?.role as string | undefined) ||
-          'cliente';
-        const role = isValidRole(rawRole) ? rawRole : 'cliente';
-
-        return {
-          id: u.id,
-          email: u.email,
-          role,
-          email_confirmed_at: u.email_confirmed_at,
-          banned_until: u.banned_until,
-          created_at: u.created_at,
-          updated_at: u.updated_at,
-        };
-      });
-    } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : 'Error fetching users list';
-      throw new InternalServerErrorException(msg);
-    }
+    const users = await this.prisma.user.findMany({
+      include: { tenant: true },
+      orderBy: { createdAt: 'desc' },
+    });
+    return users.map((u) => this.mapUser(u));
   }
 
   /**
-   * Fetches a specific user by id.
+   * Fetches user by ID.
    */
   async getUserById(userId: string): Promise<AuthUserResponse> {
-    if (this.supabaseAdmin) {
-      try {
-        const { data, error } = await this.supabaseAdmin.auth.admin.getUserById(userId);
-        if (!error && data?.user) {
-          const u = data.user;
-          const rawRole =
-            (u.app_metadata?.role as string | undefined) ||
-            (u.user_metadata?.role as string | undefined) ||
-            'cliente';
-          const role = isValidRole(rawRole) ? rawRole : 'cliente';
-
-          return {
-            id: u.id,
-            email: u.email ?? null,
-            role,
-            email_confirmed_at: u.email_confirmed_at ?? null,
-            banned_until: (u as { banned_until?: string | null }).banned_until ?? null,
-            created_at: u.created_at,
-            updated_at: u.updated_at,
-          };
-        }
-      } catch {
-        // Fallback to Prisma below
-      }
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      include: { tenant: true },
+    });
+    if (!user) {
+      throw new NotFoundException(`Usuario con ID ${userId} no encontrado.`);
     }
-
-    try {
-      const rows = await this.prisma.$queryRawUnsafe<
-        Array<{
-          id: string;
-          email: string | null;
-          email_confirmed_at: Date | string | null;
-          raw_app_meta_data: Record<string, unknown> | null;
-          raw_user_meta_data: Record<string, unknown> | null;
-          banned_until: Date | string | null;
-          created_at: Date | string;
-          updated_at: Date | string | null;
-        }>
-      >(
-        `
-        SELECT id, email, email_confirmed_at, raw_app_meta_data, raw_user_meta_data, banned_until, created_at, updated_at
-        FROM auth.users
-        WHERE id = $1::uuid
-        LIMIT 1;
-        `,
-        userId,
-      );
-
-      if (!rows || rows.length === 0) {
-        throw new NotFoundException(`User with ID ${userId} not found`);
-      }
-
-      const u = rows[0];
-      const rawRole =
-        ((u.raw_app_meta_data as Record<string, unknown> | null)?.role as string | undefined) ||
-        ((u.raw_user_meta_data as Record<string, unknown> | null)?.role as string | undefined) ||
-        'cliente';
-      const role = isValidRole(rawRole) ? rawRole : 'cliente';
-
-      return {
-        id: u.id,
-        email: u.email,
-        role,
-        email_confirmed_at: u.email_confirmed_at,
-        banned_until: u.banned_until,
-        created_at: u.created_at,
-        updated_at: u.updated_at,
-      };
-    } catch (err: unknown) {
-      if (err instanceof NotFoundException) throw err;
-      const msg = err instanceof Error ? err.message : 'Error fetching user';
-      throw new InternalServerErrorException(msg);
-    }
+    return this.mapUser(user);
   }
 }

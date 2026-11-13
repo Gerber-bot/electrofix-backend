@@ -1,98 +1,110 @@
-<p align="center">
-  <a href="http://nestjs.com/" target="blank"><img src="https://nestjs.com/img/logo-small.svg" width="120" alt="Nest Logo" /></a>
-</p>
+# ElectroFix Backend (NestJS + Prisma + SQLite)
 
-[circleci-image]: https://img.shields.io/circleci/build/github/nestjs/nest/master?token=abc123def456
-[circleci-url]: https://circleci.com/gh/nestjs/nest
+Backend de gestión para talleres de reparación de electrónica, microelectrónica y servicio técnico, adaptado para ejecución 100% local con SQLite y Prisma ORM.
 
-  <p align="center">A progressive <a href="http://nodejs.org" target="_blank">Node.js</a> framework for building efficient and scalable server-side applications.</p>
-    <p align="center">
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/v/@nestjs/core.svg" alt="NPM Version" /></a>
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/l/@nestjs/core.svg" alt="Package License" /></a>
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/dm/@nestjs/common.svg" alt="NPM Downloads" /></a>
-<a href="https://circleci.com/gh/nestjs/nest" target="_blank"><img src="https://img.shields.io/circleci/build/github/nestjs/nest/master" alt="CircleCI" /></a>
-<a href="https://discord.gg/G7Qnnhy" target="_blank"><img src="https://img.shields.io/badge/discord-online-brightgreen.svg" alt="Discord"/></a>
-<a href="https://opencollective.com/nest#backer" target="_blank"><img src="https://opencollective.com/nest/backers/badge.svg" alt="Backers on Open Collective" /></a>
-<a href="https://opencollective.com/nest#sponsor" target="_blank"><img src="https://opencollective.com/nest/sponsors/badge.svg" alt="Sponsors on Open Collective" /></a>
-  <a href="https://paypal.me/kamilmysliwiec" target="_blank"><img src="https://img.shields.io/badge/Donate-PayPal-ff3f59.svg" alt="Donate us"/></a>
-    <a href="https://opencollective.com/nest#sponsor"  target="_blank"><img src="https://img.shields.io/badge/Support%20us-Open%20Collective-41B883.svg" alt="Support us"></a>
-  <a href="https://twitter.com/nestframework" target="_blank"><img src="https://img.shields.io/twitter/follow/nestframework.svg?style=social&label=Follow" alt="Follow us on Twitter"></a>
-</p>
-  <!--[![Backers on Open Collective](https://opencollective.com/nest/backers/badge.svg)](https://opencollective.com/nest#backer)
-  [![Sponsors on Open Collective](https://opencollective.com/nest/sponsors/badge.svg)](https://opencollective.com/nest#sponsor)-->
+> **Repositorio Frontend vinculado:** [ElectroFix Frontend](../electrofix-frontend)  
+> **Acceso directo al Asistente Técnico y Cotizador IA:** [`src/ai/ai.service.ts`](./src/ai/ai.service.ts) y [`src/ai/ai.controller.ts`](./src/ai/ai.controller.ts)
 
-## Description
+---
 
-[Nest](https://github.com/nestjs/nest) framework TypeScript starter repository.
+## 🚀 Puesta en Marcha (Clon Limpio)
 
-## Project setup
+### 1. Requisitos
+- Node.js v20+ (probado en v24)
+- npm v10+
 
+### 2. Variables de Entorno
+Copia el archivo de ejemplo para generar la configuración local:
 ```bash
-$ npm install
+cp .env.example .env
+```
+Contenido predeterminado de `.env`:
+```ini
+DATABASE_URL="file:./dev.db"
+JWT_SECRET="electrofix-super-secret-local-jwt-key-32chars"
+PORT=3001
+# GEMINI_API_KEY es opcional. Si se omite o está vacía, el cotizador opera en modo de respaldo heurístico local.
+GEMINI_API_KEY=""
 ```
 
-## Compile and run the project
-
+### 3. Instalación de dependencias
 ```bash
-# development
-$ npm run start
-
-# watch mode
-$ npm run start:dev
-
-# production mode
-$ npm run start:prod
+npm install
 ```
 
-## Run tests
-
+### 4. Inicialización de la base de datos y migraciones
+Crea la base de datos SQLite y sincroniza las tablas:
 ```bash
-# unit tests
-$ npm run test
-
-# e2e tests
-$ npm run test:e2e
-
-# test coverage
-$ npm run test:cov
+npx prisma migrate dev --name init_sqlite
 ```
 
-## Deployment
-
-When you're ready to deploy your NestJS application to production, there are some key steps you can take to ensure it runs as efficiently as possible. Check out the [deployment documentation](https://docs.nestjs.com/deployment) for more information.
-
-If you are looking for a cloud-based platform to deploy your NestJS application, check out [Mau](https://mau.nestjs.com), our official platform for deploying NestJS applications on AWS. Mau makes deployment straightforward and fast, requiring just a few simple steps:
-
+### 5. Carga de datos iniciales reproducibles (Seed)
+Puebla dos talleres independientes, usuarios con contraseñas encriptadas con `bcrypt`, catálogo oficial y reparaciones de ejemplo:
 ```bash
-$ npm install -g @nestjs/mau
-$ mau deploy
+npm run seed
 ```
 
-With Mau, you can deploy your application in just a few clicks, allowing you to focus on building features rather than managing infrastructure.
+### 6. Levantar el servidor
+```bash
+# Modo desarrollo con auto-reload
+npm run start:dev
 
-## Resources
+# O compilación y ejecución directa
+npm run build
+npm run start:prod
+```
+El servidor quedará escuchando en `http://localhost:3001`.
 
-Check out a few resources that may come in handy when working with NestJS:
+---
 
-- Visit the [NestJS Documentation](https://docs.nestjs.com) to learn more about the framework.
-- For questions and support, please visit our [Discord channel](https://discord.gg/G7Qnnhy).
-- To dive deeper and get more hands-on experience, check out our official video [courses](https://courses.nestjs.com/).
-- Deploy your application to AWS with the help of [NestJS Mau](https://mau.nestjs.com) in just a few clicks.
-- Visualize your application graph and interact with the NestJS application in real-time using [NestJS Devtools](https://devtools.nestjs.com).
-- Need help with your project (part-time to full-time)? Check out our official [enterprise support](https://enterprise.nestjs.com).
-- To stay in the loop and get updates, follow us on [X](https://x.com/nestframework) and [LinkedIn](https://linkedin.com/company/nestjs).
-- Looking for a job, or have a job to offer? Check out our official [Jobs board](https://jobs.nestjs.com).
+## 👥 Usuarios de Prueba Precargados
 
-## Support
+| Rol | Email | Contraseña | Taller / Alcance |
+| :--- | :--- | :--- | :--- |
+| **Super Admin** | `admin@electrofix.local` | `Admin123!` | Global (Métricas, Auditoría, Usuarios) |
+| **Encargado Taller Centro** | `taller1@electrofix.local` | `Taller123!` | ElectroFix Centro (`tenant-centro`) |
+| **Técnico Taller Centro** | `tecnico1@electrofix.local` | `Tecnico123!` | ElectroFix Centro (`tenant-centro`) |
+| **Encargado Taller Norte** | `taller2@electrofix.local` | `Taller123!` | ElectroFix Norte (`tenant-norte`) |
+| **Técnico Taller Norte** | `tecnico2@electrofix.local` | `Tecnico123!` | ElectroFix Norte (`tenant-norte`) |
 
-Nest is an MIT-licensed open source project. It can grow thanks to the sponsors and support by the amazing backers. If you'd like to join them, please [read more here](https://docs.nestjs.com/support).
+---
 
-## Stay in touch
+## 🔒 Decisiones de Arquitectura y Persistencia SQLite
 
-- Author - [Kamil Myśliwiec](https://twitter.com/kammysliwiec)
-- Website - [https://nestjs.com](https://nestjs.com/)
-- Twitter - [@nestframework](https://twitter.com/nestframework)
+1. **Persistencia SQLite con Prisma**:
+   - `palabras_clave` en el catálogo se almacena como un string serializado en formato JSON para SQLite, conservando transparentemente la interfaz tipada `string[]` hacia controladores y frontend.
+   - Las búsquedas de texto fueron adaptadas evitando modificadores no soportados como `mode: 'insensitive'`, aprovechando la insensibilidad predeterminada de SQLite para caracteres ASCII.
+   - La numeración correlativa de órdenes (`orderNumber`) se calcula incrementalmente a nivel de servicio para no depender de secuencias de PostgreSQL (`autoincrement()` en campos no clave).
+2. **Autenticación Local Desacoplada**:
+   - Totalmente independiente de Supabase.
+   - Las contraseñas se almacenan con hash `bcrypt` (10 rounds) en la tabla local `users`.
+   - Se emiten y validan tokens JWT firmados con `JWT_SECRET`.
+   - Se eliminaron las cabeceras de bypass de desarrollo (`x-dev-role`) y cualquier desactivación condicional de permisos.
+3. **Aislamiento Multi-Taller (Multi-Tenant)**:
+   - El rol y el taller del usuario se derivan **estrictamente de la sesión validada en el servidor**.
+   - Los usuarios de taller solo pueden leer y modificar los tickets de su propio taller. Intentar acceder o editar una reparación ajena devuelve `403 Forbidden`.
+   - El aislamiento está implementado como control de acceso a nivel de aplicación en NestJS (no se presenta como RLS).
+4. **Asistente Virtual y Cotizador**:
+   - Acceso al código: [`src/ai/ai.service.ts`](./src/ai/ai.service.ts).
+   - **Gemini opcional**: si no se configura `GEMINI_API_KEY`, el sistema inicia normalmente y utiliza un algoritmo heurístico local que cotiza basándose en los ítems y precios reales del catálogo.
+   - **Privacidad estricta**: el chat público cotiza servicios y explica procedimientos, pero **no divulga diagnósticos ni datos privados de clientes** ante consultas con DNI; instruye al cliente a utilizar su código de seguimiento individual en la sección correspondiente.
+5. **Limitaciones Locales Documentadas**:
+   - El envío de correos salientes (invitaciones a nuevos técnicos) está deshabilitado en modo local. La API genera los tokens de invitación válidos para su aceptación directa vía URL.
 
-## License
+---
 
-Nest is [MIT licensed](https://github.com/nestjs/nest/blob/master/LICENSE).
+## 🧪 Pruebas Automatizadas
+
+```bash
+# Pruebas unitarias
+npm test
+
+# Suite E2E de validación (incluye control de acceso, aislamiento multi-taller y cotizador)
+npm run test:e2e
+
+# Compilación y chequeo de tipos
+npm run build
+
+# Verificación de linter
+npm run lint
+```

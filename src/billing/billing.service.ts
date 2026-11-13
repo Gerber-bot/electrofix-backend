@@ -1,4 +1,9 @@
-import { Injectable, Logger, NotFoundException, BadRequestException } from '@nestjs/common';
+import {
+  Injectable,
+  Logger,
+  NotFoundException,
+  BadRequestException,
+} from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../admin-suite/audit/audit.service';
 import { randomUUID } from 'crypto';
@@ -89,7 +94,9 @@ export class BillingService {
           data: { isPaid: true },
         });
       } catch (err) {
-        this.logger.warn(`Could not update ticket isPaid for ticket ${dto.ticketId}: ${(err as Error).message}`);
+        this.logger.warn(
+          `Could not update ticket isPaid for ticket ${dto.ticketId}: ${(err as Error).message}`,
+        );
       }
     }
 
@@ -110,7 +117,11 @@ export class BillingService {
     return paymentRecord;
   }
 
-  async getPayments(filters?: { ticketId?: string; status?: string; method?: string }) {
+  async getPayments(filters?: {
+    ticketId?: string;
+    status?: string;
+    method?: string;
+  }) {
     try {
       const where: any = {};
       if (filters?.ticketId) where.ticket_id = filters.ticketId;
@@ -219,12 +230,16 @@ export class BillingService {
         },
       });
       if (!inv) {
-        throw new NotFoundException(`Factura con ID o número ${id} no encontrada`);
+        throw new NotFoundException(
+          `Factura con ID o número ${id} no encontrada`,
+        );
       }
       return inv;
     } catch (err) {
       if (err instanceof NotFoundException) throw err;
-      throw new NotFoundException(`Factura con ID o número ${id} no encontrada`);
+      throw new NotFoundException(
+        `Factura con ID o número ${id} no encontrada`,
+      );
     }
   }
 
@@ -267,7 +282,11 @@ export class BillingService {
           byMethod.cash += amount;
         } else if (method === 'TRANSFER' || method === 'TRANSFERENCIA') {
           byMethod.transfer += amount;
-        } else if (method === 'CARD' || method === 'DEBITO' || method === 'CREDITO') {
+        } else if (
+          method === 'CARD' ||
+          method === 'DEBITO' ||
+          method === 'CREDITO'
+        ) {
           byMethod.card += amount;
         } else if (method === 'MERCADOPAGO' || method === 'MP') {
           byMethod.mercadopago += amount;
@@ -293,7 +312,8 @@ export class BillingService {
       throw new BadRequestException('Monto inválido para preferencia de pago');
     }
 
-    const title = dto.title || `Reparación ElectroFix - Ticket #${dto.ticketId || 'TKT'}`;
+    const title =
+      dto.title || `Reparación ElectroFix - Ticket #${dto.ticketId || 'TKT'}`;
     const preferenceId = `MP-PREF-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
 
     // Build simulated or production checkout link

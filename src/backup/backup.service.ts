@@ -53,7 +53,9 @@ export class BackupService {
         },
       });
     } catch (err) {
-      this.logger.warn(`Could not log backup export event to audit logs: ${(err as Error).message}`);
+      this.logger.warn(
+        `Could not log backup export event to audit logs: ${(err as Error).message}`,
+      );
     }
   }
 
@@ -115,7 +117,13 @@ export class BackupService {
 
     if (recordAudit) {
       const sizeBytes = Buffer.byteLength(JSON.stringify(payments));
-      await this.logExport('payments', 'json', sizeBytes, payments.length, user);
+      await this.logExport(
+        'payments',
+        'json',
+        sizeBytes,
+        payments.length,
+        user,
+      );
     }
 
     return payments;
@@ -131,7 +139,13 @@ export class BackupService {
 
     if (recordAudit) {
       const sizeBytes = Buffer.byteLength(JSON.stringify(invoices));
-      await this.logExport('invoices', 'json', sizeBytes, invoices.length, user);
+      await this.logExport(
+        'invoices',
+        'json',
+        sizeBytes,
+        invoices.length,
+        user,
+      );
     }
 
     return invoices;
@@ -164,7 +178,13 @@ export class BackupService {
 
     if (recordAudit) {
       const sizeBytes = Buffer.byteLength(JSON.stringify(invitations));
-      await this.logExport('invitations', 'json', sizeBytes, invitations.length, user);
+      await this.logExport(
+        'invitations',
+        'json',
+        sizeBytes,
+        invitations.length,
+        user,
+      );
     }
 
     return invitations;
@@ -218,17 +238,25 @@ export class BackupService {
    * Combines all data collections into a structured master JSON object.
    */
   async exportAllJson(user?: any) {
-    const [tickets, users, payments, invoices, auditLogs, invitations, dashboard, config] =
-      await Promise.all([
-        this.exportTickets(user, false),
-        this.exportUsers(user, false),
-        this.exportPayments(user, false),
-        this.exportInvoices(user, false),
-        this.exportAuditLogs(user, false),
-        this.exportInvitations(user, false),
-        this.exportDashboardMetrics(user, false),
-        this.exportSystemConfig(user, false),
-      ]);
+    const [
+      tickets,
+      users,
+      payments,
+      invoices,
+      auditLogs,
+      invitations,
+      dashboard,
+      config,
+    ] = await Promise.all([
+      this.exportTickets(user, false),
+      this.exportUsers(user, false),
+      this.exportPayments(user, false),
+      this.exportInvoices(user, false),
+      this.exportAuditLogs(user, false),
+      this.exportInvitations(user, false),
+      this.exportDashboardMetrics(user, false),
+      this.exportSystemConfig(user, false),
+    ]);
 
     const masterBackup = {
       version: '1.0.0',
@@ -264,17 +292,25 @@ export class BackupService {
    * Generates a multi-file compressed ZIP archive containing all collections in JSON format.
    */
   async exportAllZip(user?: any): Promise<Buffer> {
-    const [tickets, users, payments, invoices, auditLogs, invitations, dashboard, config] =
-      await Promise.all([
-        this.exportTickets(user, false),
-        this.exportUsers(user, false),
-        this.exportPayments(user, false),
-        this.exportInvoices(user, false),
-        this.exportAuditLogs(user, false),
-        this.exportInvitations(user, false),
-        this.exportDashboardMetrics(user, false),
-        this.exportSystemConfig(user, false),
-      ]);
+    const [
+      tickets,
+      users,
+      payments,
+      invoices,
+      auditLogs,
+      invitations,
+      dashboard,
+      config,
+    ] = await Promise.all([
+      this.exportTickets(user, false),
+      this.exportUsers(user, false),
+      this.exportPayments(user, false),
+      this.exportInvoices(user, false),
+      this.exportAuditLogs(user, false),
+      this.exportInvitations(user, false),
+      this.exportDashboardMetrics(user, false),
+      this.exportSystemConfig(user, false),
+    ]);
 
     const manifest = {
       application: 'ElectroFix OS',
@@ -345,10 +381,7 @@ export class BackupService {
     try {
       const logs = await this.prisma.auditLog.findMany({
         where: {
-          OR: [
-            { entity: 'backup' },
-            { action: 'BACKUP_EXPORT' },
-          ],
+          OR: [{ entity: 'backup' }, { action: 'BACKUP_EXPORT' }],
         },
         orderBy: { created_at: 'desc' },
         take: 100,
@@ -356,7 +389,9 @@ export class BackupService {
 
       return logs;
     } catch (err) {
-      this.logger.warn(`Could not fetch backup history from Prisma: ${(err as Error).message}`);
+      this.logger.warn(
+        `Could not fetch backup history from Prisma: ${(err as Error).message}`,
+      );
       return [];
     }
   }
