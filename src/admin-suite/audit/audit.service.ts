@@ -38,12 +38,36 @@ export class AuditService {
 
   constructor(private readonly prisma: PrismaService) {}
 
+  private parseAuditLog(raw: any): AuditLogItem {
+    let parsedMeta = null;
+    if (typeof raw.metadata === 'string') {
+      try {
+        parsedMeta = JSON.parse(raw.metadata);
+      } catch {
+        parsedMeta = raw.metadata;
+      }
+    } else if (raw.metadata) {
+      parsedMeta = raw.metadata;
+    }
+
+    return {
+      id: raw.id,
+      user_id: raw.user_id,
+      role: raw.role,
+      action: raw.action,
+      entity: raw.entity,
+      entity_id: raw.entity_id,
+      metadata: parsedMeta,
+      created_at: raw.created_at,
+    };
+  }
+
   async logAction(dto: CreateAuditLogDto): Promise<AuditLogItem> {
     const id = randomUUID();
     const now = new Date();
 
     try {
-      return await this.prisma.auditLog.create({
+      const created = await this.prisma.auditLog.create({
         data: {
           id,
           user_id: dto.userId ?? null,
@@ -51,12 +75,15 @@ export class AuditService {
           action: dto.action,
           entity: dto.entity,
           entity_id: dto.entityId ?? null,
-          metadata: (dto.metadata as any) ?? undefined,
+          metadata: dto.metadata ? JSON.stringify(dto.metadata) : null,
           created_at: now,
         },
       });
+      return this.parseAuditLog(created);
     } catch (err) {
-      this.logger.error(`Failed to insert audit log: ${(err as Error).message}`);
+      this.logger.error(
+        `Failed to insert audit log: ${(err as Error).message}`,
+      );
       return {
         id,
         user_id: dto.userId ?? null,
@@ -78,11 +105,12 @@ export class AuditService {
     try {
       const where: any = {};
       if (filters.user_id) where.user_id = filters.user_id;
-      if (filters.role) where.role = { equals: filters.role, mode: 'insensitive' };
-      if (filters.action) where.action = { contains: filters.action, mode: 'insensitive' };
+      if (filters.role) where.role = { equals: filters.role };
+      if (filters.action) where.action = { contains: filters.action };
       if (filters.startDate || filters.endDate) {
         where.created_at = {};
-        if (filters.startDate) where.created_at.gte = new Date(filters.startDate);
+        if (filters.startDate)
+          where.created_at.gte = new Date(filters.startDate);
         if (filters.endDate) where.created_at.lte = new Date(filters.endDate);
       }
 
@@ -97,7 +125,7 @@ export class AuditService {
       ]);
 
       return {
-        data,
+        data: data.map((d) => this.parseAuditLog(d)),
         total,
         page,
         limit,
@@ -111,37 +139,49 @@ export class AuditService {
 
   async getById(id: string): Promise<AuditLogItem | null> {
     try {
-      return await this.prisma.auditLog.findUnique({ where: { id } });
+      const log = await this.prisma.auditLog.findUnique({ where: { id } });
+      return log ? this.parseAuditLog(log) : null;
     } catch (err) {
-      this.logger.error(`Error getting audit log by id: ${(err as Error).message}`);
+      this.logger.error(
+        `Error getting audit log by id: ${(err as Error).message}`,
+      );
       return null;
     }
   }
 
   async getByUserId(userId: string): Promise<AuditLogItem[]> {
     try {
-      return await this.prisma.auditLog.findMany({
+      const logs = await this.prisma.auditLog.findMany({
         where: { user_id: userId },
         orderBy: { created_at: 'desc' },
         take: 50,
       });
+      return logs.map((l) => this.parseAuditLog(l));
     } catch (err) {
-      this.logger.error(`Error getting audit logs by user id: ${(err as Error).message}`);
+      this.logger.error(
+        `Error getting audit logs by user id: ${(err as Error).message}`,
+      );
       return [];
     }
   }
 
-  async getByEntity(entity: string, entityId?: string): Promise<AuditLogItem[]> {
+  async getByEntity(
+    entity: string,
+    entityId?: string,
+  ): Promise<AuditLogItem[]> {
     try {
       const where: any = { entity };
       if (entityId) where.entity_id = entityId;
-      return await this.prisma.auditLog.findMany({
+      const logs = await this.prisma.auditLog.findMany({
         where,
         orderBy: { created_at: 'desc' },
         take: 50,
       });
+      return logs.map((l) => this.parseAuditLog(l));
     } catch (err) {
-      this.logger.error(`Error getting audit logs by entity: ${(err as Error).message}`);
+      this.logger.error(
+        `Error getting audit logs by entity: ${(err as Error).message}`,
+      );
       return [];
     }
   }

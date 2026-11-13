@@ -46,11 +46,21 @@ export class CatalogController {
   @UseGuards(RolesGuard)
   @Roles('admin', 'taller')
   async create(@Body() dto: CreateCatalogItemDto, @Req() req: Request) {
-    if (!dto.nombre || !dto.categoria || dto.precio === undefined || !dto.tiempo_estimado) {
-      throw new BadRequestException('Faltan campos obligatorios: nombre, categoría, precio o tiempo estimado');
+    if (
+      !dto.nombre ||
+      !dto.categoria ||
+      dto.precio === undefined ||
+      !dto.tiempo_estimado
+    ) {
+      throw new BadRequestException(
+        'Faltan campos obligatorios: nombre, categoría, precio o tiempo estimado',
+      );
     }
     const user = (req as unknown as { user?: AuthenticatedUser })['user'];
-    return this.catalogService.create(dto, user ? { id: user.id, role: user.role } : undefined);
+    return this.catalogService.create(
+      dto,
+      user ? { id: user.id, role: user.role } : undefined,
+    );
   }
 
   @Patch([':id', 'items/:id'])
@@ -62,7 +72,11 @@ export class CatalogController {
     @Req() req: Request,
   ) {
     const user = (req as unknown as { user?: AuthenticatedUser })['user'];
-    return this.catalogService.update(id, dto, user ? { id: user.id, role: user.role } : undefined);
+    return this.catalogService.update(
+      id,
+      dto,
+      user ? { id: user.id, role: user.role } : undefined,
+    );
   }
 
   @Delete([':id', 'items/:id'])
@@ -70,6 +84,9 @@ export class CatalogController {
   @Roles('admin', 'taller')
   async delete(@Param('id') id: string, @Req() req: Request) {
     const user = (req as unknown as { user?: AuthenticatedUser })['user'];
-    return this.catalogService.delete(id, user ? { id: user.id, role: user.role } : undefined);
+    return this.catalogService.delete(
+      id,
+      user ? { id: user.id, role: user.role } : undefined,
+    );
   }
 }

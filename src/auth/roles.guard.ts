@@ -16,10 +16,10 @@ export class RolesGuard implements CanActivate {
   constructor(private readonly reflector: Reflector) {}
 
   canActivate(context: ExecutionContext): boolean {
-    const requiredRoles = this.reflector.getAllAndOverride<UserRole[]>(ROLES_KEY, [
-      context.getHandler(),
-      context.getClass(),
-    ]);
+    const requiredRoles = this.reflector.getAllAndOverride<UserRole[]>(
+      ROLES_KEY,
+      [context.getHandler(), context.getClass()],
+    );
 
     // If no roles specified, allow access
     if (!requiredRoles || requiredRoles.length === 0) {
@@ -28,27 +28,19 @@ export class RolesGuard implements CanActivate {
 
     const request = context.switchToHttp().getRequest<Request>();
     const user = (request as unknown as { user?: AuthenticatedUser })['user'];
-    const authHeader = request.headers['authorization'] || request.headers['Authorization'];
-
-    // Local dev / bootstrapping fallback:
-    // If running in non-production and no authorization header is provided,
-    // allow access to prevent blocking initial local development and bootstrapping.
-    const isNonProduction = process.env.NODE_ENV !== 'production';
-    if (isNonProduction && !authHeader) {
-      return true;
-    }
 
     if (!user) {
-      throw new UnauthorizedException('Authentication required');
+      throw new UnauthorizedException(
+        'Se requiere iniciar sesión para acceder a este recurso.',
+      );
     }
 
-    const userRole =
-      user.role ||
-      (user.app_metadata?.role as UserRole | undefined) ||
-      (user.user_metadata?.role as UserRole | undefined);
+    const userRole = user.role;
 
     if (!userRole || !requiredRoles.includes(userRole)) {
-      throw new ForbiddenException('Insufficient permissions');
+      throw new ForbiddenException(
+        `Permisos insuficientes. Se requiere uno de los siguientes roles: ${requiredRoles.join(', ')}.`,
+      );
     }
 
     return true;

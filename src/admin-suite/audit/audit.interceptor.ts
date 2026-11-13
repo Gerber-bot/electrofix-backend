@@ -20,7 +20,9 @@ export class AuditInterceptor implements NestInterceptor {
     const method = request.method;
 
     // Only auto-audit mutating requests
-    const isMutating = ['POST', 'PUT', 'PATCH', 'DELETE'].includes(method.toUpperCase());
+    const isMutating = ['POST', 'PUT', 'PATCH', 'DELETE'].includes(
+      method.toUpperCase(),
+    );
     if (!isMutating) {
       return next.handle();
     }
@@ -42,7 +44,8 @@ export class AuditInterceptor implements NestInterceptor {
 
     const action = `${method} ${url}`;
     const segments = url.split('/').filter(Boolean);
-    const entity = segments.length > 0 ? segments[segments.length - 1] : 'unknown';
+    const entity =
+      segments.length > 0 ? segments[segments.length - 1] : 'unknown';
 
     // Mask passwords or sensitive tokens from payload
     const bodyCopy = { ...(request.body || {}) };
@@ -58,7 +61,7 @@ export class AuditInterceptor implements NestInterceptor {
 
     return next.handle().pipe(
       tap({
-        next: (responseBody) => {
+        next: (_responseBody) => {
           this.auditService
             .logAction({
               userId,

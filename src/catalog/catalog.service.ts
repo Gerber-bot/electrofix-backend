@@ -1,4 +1,9 @@
-import { Injectable, Logger, OnModuleInit, NotFoundException } from '@nestjs/common';
+import {
+  Injectable,
+  Logger,
+  OnModuleInit,
+  NotFoundException,
+} from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../admin-suite/audit/audit.service';
 import { CreateCatalogItemDto } from './dto/create-catalog-item.dto';
@@ -33,12 +38,44 @@ export class CatalogService implements OnModuleInit {
     await this.seedInitialItemsIfEmpty();
   }
 
+  private mapItem(item: any): CatalogItemEntity {
+    let palabrasClave: string[] = [];
+    if (Array.isArray(item.palabras_clave)) {
+      palabrasClave = item.palabras_clave;
+    } else if (typeof item.palabras_clave === 'string') {
+      try {
+        palabrasClave = JSON.parse(item.palabras_clave);
+      } catch {
+        palabrasClave = item.palabras_clave ? [item.palabras_clave] : [];
+      }
+    }
+
+    return {
+      id: item.id,
+      nombre: item.nombre,
+      modelo: item.modelo,
+      categoria: item.categoria,
+      precio: Number(item.precio),
+      tiempo_estimado: item.tiempo_estimado,
+      stock: Number(item.stock),
+      descripcion: item.descripcion,
+      palabras_clave: palabrasClave,
+      activo: Boolean(item.activo),
+      creado_en: item.creado_en,
+      actualizado_en: item.actualizado_en,
+    };
+  }
+
   private async seedInitialItemsIfEmpty() {
     try {
       const count = await this.count();
       if (count === 0) {
-        this.logger.log('Catalog is empty. Seeding initial workshop services...');
-        const initialSeeds: Array<Omit<CatalogItemEntity, 'id' | 'creado_en' | 'actualizado_en'>> = [
+        this.logger.log(
+          'Catalog is empty. Seeding initial workshop services...',
+        );
+        const initialSeeds: Array<
+          Omit<CatalogItemEntity, 'id' | 'creado_en' | 'actualizado_en'>
+        > = [
           {
             nombre: 'Cambio Módulo OLED iPhone 13/14',
             modelo: 'iPhone 13 / 14',
@@ -46,8 +83,19 @@ export class CatalogService implements OnModuleInit {
             precio: 85000,
             tiempo_estimado: '2 a 3 horas',
             stock: 6,
-            descripcion: 'Reemplazo de pantalla completa OLED calidad original con reprogramación TrueTone y sellado estanco hermético contra polvo y salpicaduras.',
-            palabras_clave: ['iphone', 'pantalla', 'modulo', 'oled', 'display', 'tactil', 'iphone 13', 'iphone 14', 'rotura'],
+            descripcion:
+              'Reemplazo de pantalla completa OLED calidad original con reprogramación TrueTone y sellado estanco hermético contra polvo y salpicaduras.',
+            palabras_clave: [
+              'iphone',
+              'pantalla',
+              'modulo',
+              'oled',
+              'display',
+              'tactil',
+              'iphone 13',
+              'iphone 14',
+              'rotura',
+            ],
             activo: true,
           },
           {
@@ -57,8 +105,18 @@ export class CatalogService implements OnModuleInit {
             precio: 28000,
             tiempo_estimado: '1 a 2 horas',
             stock: 15,
-            descripcion: 'Sustitución de puerto de carga USB Type-C con microsoldadura SMD, limpieza ultrasónica y verificación de amperaje de carga rápida.',
-            palabras_clave: ['pin', 'carga', 'puerto', 'usb-c', 'tipo c', 'no carga', 'falso contacto', 'bateria'],
+            descripcion:
+              'Sustitución de puerto de carga USB Type-C con microsoldadura SMD, limpieza ultrasónica y verificación de amperaje de carga rápida.',
+            palabras_clave: [
+              'pin',
+              'carga',
+              'puerto',
+              'usb-c',
+              'tipo c',
+              'no carga',
+              'falso contacto',
+              'bateria',
+            ],
             activo: true,
           },
           {
@@ -68,8 +126,20 @@ export class CatalogService implements OnModuleInit {
             precio: 38000,
             tiempo_estimado: '3 a 5 horas',
             stock: 10,
-            descripcion: 'Limpieza integral con aire comprimido ionizado, cambio de pasta térmica de alto rendimiento Arctic MX-4 / Thermal Grizzly y thermal pads.',
-            palabras_clave: ['mantenimiento', 'termico', 'pasta termica', 'temperatura', 'cooler', 'limpieza', 'gamer', 'notebook', 'pc', 'ruido'],
+            descripcion:
+              'Limpieza integral con aire comprimido ionizado, cambio de pasta térmica de alto rendimiento Arctic MX-4 / Thermal Grizzly y thermal pads.',
+            palabras_clave: [
+              'mantenimiento',
+              'termico',
+              'pasta termica',
+              'temperatura',
+              'cooler',
+              'limpieza',
+              'gamer',
+              'notebook',
+              'pc',
+              'ruido',
+            ],
             activo: true,
           },
           {
@@ -79,8 +149,17 @@ export class CatalogService implements OnModuleInit {
             precio: 65000,
             tiempo_estimado: '24 a 48 hs',
             stock: 4,
-            descripcion: 'Reemplazo de conector HDMI 2.1 original reforzado con estación de microsoldadura y comprobación con analizador de señal 4K/120Hz.',
-            palabras_clave: ['hdmi', 'ps5', 'playstation', 'sin imagen', 'pantalla negra', 'consola', 'luz azul'],
+            descripcion:
+              'Reemplazo de conector HDMI 2.1 original reforzado con estación de microsoldadura y comprobación con analizador de señal 4K/120Hz.',
+            palabras_clave: [
+              'hdmi',
+              'ps5',
+              'playstation',
+              'sin imagen',
+              'pantalla negra',
+              'consola',
+              'luz azul',
+            ],
             activo: true,
           },
           {
@@ -90,8 +169,18 @@ export class CatalogService implements OnModuleInit {
             precio: 92000,
             tiempo_estimado: '48 a 72 hs',
             stock: 8,
-            descripcion: 'Detección termográfica con cámara térmica, inyección controlada de tensión y sustitución de circuitos integrados PMIC, MOSFETs y capacitores SMD en corto.',
-            palabras_clave: ['placa', 'motherboard', 'corto', 'no enciende', 'microelectronica', 'mosfet', 'reballing', 'muerto'],
+            descripcion:
+              'Detección termográfica con cámara térmica, inyección controlada de tensión y sustitución de circuitos integrados PMIC, MOSFETs y capacitores SMD en corto.',
+            palabras_clave: [
+              'placa',
+              'motherboard',
+              'corto',
+              'no enciende',
+              'microelectronica',
+              'mosfet',
+              'reballing',
+              'muerto',
+            ],
             activo: true,
           },
           {
@@ -101,8 +190,16 @@ export class CatalogService implements OnModuleInit {
             precio: 34000,
             tiempo_estimado: '1 a 2 horas',
             stock: 9,
-            descripcion: 'Instalación de batería de litio original nueva con prueba de ciclos de vida útil y calibración de curva de voltaje en software.',
-            palabras_clave: ['bateria', 'samsung', 'bateria agotada', 'no dura la carga', 'galaxy', 'hinchada'],
+            descripcion:
+              'Instalación de batería de litio original nueva con prueba de ciclos de vida útil y calibración de curva de voltaje en software.',
+            palabras_clave: [
+              'bateria',
+              'samsung',
+              'bateria agotada',
+              'no dura la carga',
+              'galaxy',
+              'hinchada',
+            ],
             activo: true,
           },
           {
@@ -112,8 +209,19 @@ export class CatalogService implements OnModuleInit {
             precio: 78000,
             tiempo_estimado: '3 a 4 horas',
             stock: 7,
-            descripcion: 'Instalación de unidad de estado sólido NVMe ultra rápida de 1TB, clonación segura o instalación limpia de sistema operativo y migración de datos.',
-            palabras_clave: ['disco', 'ssd', 'nvme', 'upgrade', 'lenta', 'formateo', 'windows', 'backup', 'memoria'],
+            descripcion:
+              'Instalación de unidad de estado sólido NVMe ultra rápida de 1TB, clonación segura o instalación limpia de sistema operativo y migración de datos.',
+            palabras_clave: [
+              'disco',
+              'ssd',
+              'nvme',
+              'upgrade',
+              'lenta',
+              'formateo',
+              'windows',
+              'backup',
+              'memoria',
+            ],
             activo: true,
           },
         ];
@@ -121,10 +229,14 @@ export class CatalogService implements OnModuleInit {
         for (const item of initialSeeds) {
           await this.create(item, { id: 'system-seed', role: 'admin' });
         }
-        this.logger.log(`Seeded ${initialSeeds.length} default catalog services.`);
+        this.logger.log(
+          `Seeded ${initialSeeds.length} default catalog services.`,
+        );
       }
     } catch (err: unknown) {
-      this.logger.warn(`Could not seed initial catalog items: ${(err as Error).message}`);
+      this.logger.warn(
+        `Could not seed initial catalog items: ${(err as Error).message}`,
+      );
     }
   }
 
@@ -136,21 +248,27 @@ export class CatalogService implements OnModuleInit {
     }
   }
 
-  async findAll(filter?: { active?: boolean; category?: string }): Promise<CatalogItemEntity[]> {
+  async findAll(filter?: {
+    active?: boolean;
+    category?: string;
+  }): Promise<CatalogItemEntity[]> {
     try {
       const where: any = {};
       if (filter?.active !== undefined) {
         where.activo = filter.active;
       }
-      if (filter?.category) {
-        where.categoria = { equals: filter.category, mode: 'insensitive' };
+      if (filter?.category && filter.category !== 'ALL') {
+        where.categoria = { equals: filter.category };
       }
-      return await this.prisma.catalogItem.findMany({
+      const items = await this.prisma.catalogItem.findMany({
         where,
         orderBy: [{ categoria: 'asc' }, { nombre: 'asc' }],
       });
+      return items.map((i) => this.mapItem(i));
     } catch (err) {
-      this.logger.error(`Error querying catalog items: ${(err as Error).message}`);
+      this.logger.error(
+        `Error querying catalog items: ${(err as Error).message}`,
+      );
       return [];
     }
   }
@@ -158,12 +276,14 @@ export class CatalogService implements OnModuleInit {
   async findById(id: string): Promise<CatalogItemEntity> {
     try {
       const item = await this.prisma.catalogItem.findUnique({ where: { id } });
-      if (item) return item;
+      if (item) return this.mapItem(item);
     } catch {
       // Fall through to NotFoundException
     }
 
-    throw new NotFoundException(`Servicio de catálogo con ID "${id}" no encontrado`);
+    throw new NotFoundException(
+      `Servicio de catálogo con ID "${id}" no encontrado`,
+    );
   }
 
   async create(
@@ -186,7 +306,7 @@ export class CatalogService implements OnModuleInit {
         tiempo_estimado: dto.tiempo_estimado,
         stock: Number(dto.stock ?? 0),
         descripcion: dto.descripcion,
-        palabras_clave: palabrasClave,
+        palabras_clave: JSON.stringify(palabrasClave),
         activo: dto.activo !== undefined ? Boolean(dto.activo) : true,
         creado_en: now,
         actualizado_en: now,
@@ -209,7 +329,7 @@ export class CatalogService implements OnModuleInit {
       },
     });
 
-    return item;
+    return this.mapItem(item);
   }
 
   async update(
@@ -227,13 +347,16 @@ export class CatalogService implements OnModuleInit {
     if (dto.modelo !== undefined) dataToUpdate.modelo = dto.modelo || null;
     if (dto.categoria !== undefined) dataToUpdate.categoria = dto.categoria;
     if (dto.precio !== undefined) dataToUpdate.precio = Number(dto.precio);
-    if (dto.tiempo_estimado !== undefined) dataToUpdate.tiempo_estimado = dto.tiempo_estimado;
+    if (dto.tiempo_estimado !== undefined)
+      dataToUpdate.tiempo_estimado = dto.tiempo_estimado;
     if (dto.stock !== undefined) dataToUpdate.stock = Number(dto.stock);
-    if (dto.descripcion !== undefined) dataToUpdate.descripcion = dto.descripcion;
+    if (dto.descripcion !== undefined)
+      dataToUpdate.descripcion = dto.descripcion;
     if (dto.palabras_clave !== undefined) {
-      dataToUpdate.palabras_clave = Array.isArray(dto.palabras_clave)
+      const arr = Array.isArray(dto.palabras_clave)
         ? dto.palabras_clave.map((p) => String(p).trim()).filter(Boolean)
         : [];
+      dataToUpdate.palabras_clave = JSON.stringify(arr);
     }
     if (dto.activo !== undefined) dataToUpdate.activo = Boolean(dto.activo);
 
@@ -260,10 +383,13 @@ export class CatalogService implements OnModuleInit {
       },
     });
 
-    return updated;
+    return this.mapItem(updated);
   }
 
-  async delete(id: string, user?: { id?: string; role?: string }): Promise<{ ok: boolean; id: string }> {
+  async delete(
+    id: string,
+    user?: { id?: string; role?: string },
+  ): Promise<{ ok: boolean; id: string }> {
     const existing = await this.findById(id);
 
     await this.prisma.catalogItem.delete({ where: { id } });
@@ -311,7 +437,9 @@ export class CatalogService implements OnModuleInit {
         const modeloLower = (item.modelo || '').toLowerCase();
         const categoriaLower = item.categoria.toLowerCase();
         const descripcionLower = item.descripcion.toLowerCase();
-        const keywordsLower = (item.palabras_clave || []).map((k) => k.toLowerCase());
+        const keywordsLower = (item.palabras_clave || []).map((k) =>
+          k.toLowerCase(),
+        );
 
         let score = 0;
 
@@ -322,7 +450,8 @@ export class CatalogService implements OnModuleInit {
         for (const term of terms) {
           if (modeloLower && modeloLower.includes(term)) score += 6;
           if (nombreLower.includes(term)) score += 5;
-          if (keywordsLower.some((k) => k.includes(term) || term.includes(k))) score += 4;
+          if (keywordsLower.some((k) => k.includes(term) || term.includes(k)))
+            score += 4;
           if (categoriaLower.includes(term)) score += 2;
           if (descripcionLower.includes(term)) score += 1;
         }

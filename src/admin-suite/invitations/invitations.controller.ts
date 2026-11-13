@@ -60,9 +60,7 @@ export class InvitationsController {
   }
 
   @Post('accept')
-  async acceptInvitation(
-    @Body() body: { token: string; password: string },
-  ) {
+  async acceptInvitation(@Body() body: { token: string; password: string }) {
     if (!body?.token || !body?.password) {
       throw new BadRequestException('Token y contraseña son requeridos');
     }

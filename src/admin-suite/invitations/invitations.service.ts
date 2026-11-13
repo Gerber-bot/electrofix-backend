@@ -1,9 +1,4 @@
-import {
-  Injectable,
-  BadRequestException,
-  NotFoundException,
-  Logger,
-} from '@nestjs/common';
+import { Injectable, BadRequestException, Logger } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { AuthService } from '../../auth/auth.service';
 import { AuditService } from '../audit/audit.service';
@@ -61,7 +56,9 @@ export class InvitationsService {
         },
       });
     } catch (err) {
-      this.logger.error(`Error inserting invitation: ${(err as Error).message}`);
+      this.logger.error(
+        `Error inserting invitation: ${(err as Error).message}`,
+      );
       throw new BadRequestException('No se pudo generar la invitación.');
     }
 
@@ -79,7 +76,10 @@ export class InvitationsService {
       },
     });
 
-    const appUrl = process.env.APP_URL || process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
+    const appUrl =
+      process.env.APP_URL ||
+      process.env.NEXT_PUBLIC_APP_URL ||
+      'http://localhost:3000';
     const inviteUrl = `${appUrl}/auth/invite/${token}`;
 
     return {
@@ -92,7 +92,9 @@ export class InvitationsService {
     };
   }
 
-  async validateToken(token: string): Promise<{ valid: boolean; invitation?: InvitationItem; reason?: string }> {
+  async validateToken(
+    token: string,
+  ): Promise<{ valid: boolean; invitation?: InvitationItem; reason?: string }> {
     if (!token) {
       throw new BadRequestException('Token de invitación requerido');
     }
@@ -100,9 +102,13 @@ export class InvitationsService {
     let invitation: InvitationItem | null = null;
 
     try {
-      invitation = await this.prisma.invitation.findUnique({ where: { token } });
+      invitation = await this.prisma.invitation.findUnique({
+        where: { token },
+      });
     } catch (err) {
-      this.logger.error(`Error querying invitation by token: ${(err as Error).message}`);
+      this.logger.error(
+        `Error querying invitation by token: ${(err as Error).message}`,
+      );
     }
 
     if (!invitation) {
@@ -135,7 +141,9 @@ export class InvitationsService {
     const inv = validation.invitation;
 
     if (!password || password.length < 8) {
-      throw new BadRequestException('La contraseña debe tener al menos 8 caracteres');
+      throw new BadRequestException(
+        'La contraseña debe tener al menos 8 caracteres',
+      );
     }
 
     // 1. Create or register user in AuthService
@@ -152,7 +160,9 @@ export class InvitationsService {
         data: { used: true },
       });
     } catch (err) {
-      this.logger.error(`Error marking invitation used: ${(err as Error).message}`);
+      this.logger.error(
+        `Error marking invitation used: ${(err as Error).message}`,
+      );
     }
 
     // 3. Log to AuditLog
@@ -184,7 +194,9 @@ export class InvitationsService {
         orderBy: { created_at: 'desc' },
       });
     } catch (err) {
-      this.logger.error(`Error querying invitations: ${(err as Error).message}`);
+      this.logger.error(
+        `Error querying invitations: ${(err as Error).message}`,
+      );
       rows = [];
     }
 

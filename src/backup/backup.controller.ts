@@ -1,11 +1,4 @@
-import {
-  Controller,
-  Get,
-  Query,
-  Req,
-  Res,
-  UseGuards,
-} from '@nestjs/common';
+import { Controller, Get, Query, Req, Res, UseGuards } from '@nestjs/common';
 import type { Request, Response } from 'express';
 import { BackupService } from './backup.service';
 import { RolesGuard } from '../auth/roles.guard';
@@ -38,10 +31,7 @@ export class BackupController {
   }
 
   @Get('zip')
-  async exportZip(
-    @Req() req: Request,
-    @Res() res: Response,
-  ) {
+  async exportZip(@Req() req: Request, @Res() res: Response) {
     const user = (req as unknown as { user?: any }).user;
     const zipBuffer = await this.backupService.exportAllZip(user);
     const dateStr = new Date().toISOString().split('T')[0];
